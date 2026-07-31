@@ -170,7 +170,7 @@ function threadItem({ sender, messages }) {
           ${latest.mode === 'directed' ? `<span class="crc-badge directed">Directed</span>` : ''}
         </div>
       </div>
-      <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+      <div class="thread-actions">
         <button class="btn-delete-thread" data-sender="${sender}" title="Delete thread">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/>
