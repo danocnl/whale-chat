@@ -22,9 +22,9 @@
 - [x] UUID v4 generation on first launch, persisted to `localStorage`
 - [x] Local storage layer — schema for UUID, history, contacts
 - [x] CRC-16 utility (encode + verify)
-- [ ] Static Huffman table (English-tuned, ~79 char set, encode + decode)
+- [x] Static Huffman table (English-tuned, ~79 char set, encode + decode)
 
-> **Notes:** Scaffolded manually (not via `npm create vite`) to preserve `docs/`. Build verified clean — 12 modules, 107ms. CRC-16/CCITT-FALSE implemented. UUID + storage layer complete. Huffman table is the remaining Phase 0 task.
+> **Notes:** Scaffolded manually (not via `npm create vite`) to preserve `docs/`. Build verified clean — 12 modules, 107ms. CRC-16/CCITT-FALSE implemented. UUID + storage layer complete. Huffman table built dynamically from fixed English frequency weights — tree is always identical on sender and receiver. Round-trip verified on multiple realistic samples. Actual bits/char: 4.6–5.3 for typical messaging text (spec estimated 4.5 — slightly optimistic due to capitals/punctuation, but transmission times remain valid). Phase 0 complete.
 
 ---
 
