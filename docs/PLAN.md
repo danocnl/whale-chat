@@ -30,15 +30,15 @@
 
 ### Phase 1 — TX Audio Engine
 
-- [ ] Dual-band tone generation via `OscillatorNode` (16–18 kHz low, 18–20 kHz high)
-- [ ] 8-FSK symbol mapping (8 tones per sub-band, 3 bits per symbol)
-- [ ] 20ms symbol timing loop
-- [ ] Character validation against allowed character set
-- [ ] Huffman compression pipeline (text → bit stream)
-- [ ] Frame assembly: WAKE → APP\_SIG → SYNC → SENDER\_UUID → RECIPIENT\_UUID → NUM\_COPIES → LENGTH → PAYLOAD\_1 → CRC16\_1 → PAYLOAD\_2 → CRC16\_2 → END
-- [ ] Full transmission pipeline: text in → frame → audio out
+- [x] Dual-band tone generation via `OscillatorNode` (16–18 kHz low, 18–20 kHz high)
+- [x] 8-FSK symbol mapping (8 tones per sub-band, 3 bits per symbol)
+- [x] 20ms symbol timing loop
+- [x] Character validation against allowed character set
+- [x] Huffman compression pipeline (text → bit stream)
+- [x] Frame assembly: WAKE → APP\_SIG → SYNC → SENDER\_UUID → RECIPIENT\_UUID → NUM\_COPIES → LENGTH → PAYLOAD\_1 → CRC16\_1 → PAYLOAD\_2 → CRC16\_2 → END
+- [x] Full transmission pipeline: text in → frame → audio out
 
-> **Notes:** —
+> **Notes:** All frequency scheduling done against `AudioContext.currentTime` (not setTimeout) for sample-accurate, drift-free symbol timing. Signal chain: two OscillatorNode (sine) → individual GainNode (0.5 each) → master GainNode (0.8) → speakers. WAKE + END use sustained tones at sub-band centres (17 kHz, 19 kHz); data symbols switch frequencies via `setValueAtTime`. `estimateDuration()` exported for UI progress indicator. Frame assembly and symbol conversion tested in Node — all symbol indices valid [0–7], payload bits verified in correct frame position. Audio playback requires browser (AudioContext not available in Node). Phase 1 complete.
 
 ---
 
