@@ -51,8 +51,8 @@ const SIGNAL_DB = -70;
 const WAKE_MIN_TICKS = 5;  // 5 × 80ms = 400ms — WAKE is 500ms = 6.25 ticks at 80ms each
 
 // Maximum data symbols to buffer before declaring a frame invalid
-// 4-FSK: 4 bits/symbol. 1200 × 4 = 4800 bits — enough for 2 × max payload + overhead
-const MAX_FRAME_SYMBOLS = 1200;
+// 4-FSK: 4 bits/symbol. 1800 × 4 = 7200 bits — enough for 3 × max payload + overhead
+const MAX_FRAME_SYMBOLS = 1800;
 
 // Frame bit offsets — relative to the ALIGNED frame start (last APP_SIG copy).
 // After alignment, the structure is identical to the single-copy case:
@@ -219,25 +219,28 @@ export function decodePayload(rawFrameBits) {
     offset += bitsConsumed + 16;
   }
 
+  const passingCopies = copies.filter(c => c.crcValid);
+  const majority = Math.ceil(copies.length / 2); // ≥2 of 3
+
   let result;
 
-  // Both copies clean
-  if (copies.every(c => c.crcValid)) {
-    result = { text: copies[0].text, crcStatus: 'clean' };
+  if (passingCopies.length === copies.length) {
+    // All copies clean
+    result = { text: passingCopies[0].text, crcStatus: 'clean' };
+  } else if (passingCopies.length >= majority) {
+    // Majority pass — message is reliable, one copy had a bad moment
+    result = { text: passingCopies[0].text, crcStatus: 'clean' };
+  } else if (passingCopies.length > 0) {
+    // Minority pass
+    result = { text: passingCopies[0].text, crcStatus: 'recovered' };
   } else {
-    // One copy clean
-    const clean = copies.find(c => c.crcValid);
-    if (clean) {
-      result = { text: clean.text, crcStatus: 'recovered' };
-    } else {
-      // Both corrupted — majority-bit vote on raw payload bits, attempt decode
-      const voted = majorityVote(copies.map(c => c.rawBits));
-      try {
-        const { text } = decodeWithLength(voted, charCount);
-        result = { text, crcStatus: 'corrupted' };
-      } catch {
-        result = { text: copies[0]?.text ?? '', crcStatus: 'corrupted' };
-      }
+    // None pass — majority-bit vote on raw payload bits, attempt decode
+    const voted = majorityVote(copies.map(c => c.rawBits));
+    try {
+      const { text } = decodeWithLength(voted, charCount);
+      result = { text, crcStatus: 'corrupted' };
+    } catch {
+      result = { text: copies[0]?.text ?? '', crcStatus: 'corrupted' };
     }
   }
 

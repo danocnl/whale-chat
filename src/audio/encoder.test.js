@@ -69,7 +69,7 @@ describe('estimateDuration', () => {
 
   it('280-char message transmission time is reasonable', () => {
     // 40ms symbols significantly increases transmission time
-    expect(estimateDuration('a'.repeat(280))).toBeLessThan(55000);
+    expect(estimateDuration('a'.repeat(280))).toBeLessThan(80000);
   });
 
   it('always includes WAKE + END overhead (~800ms)', () => {

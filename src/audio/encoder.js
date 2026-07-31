@@ -43,7 +43,7 @@ const WAKE_HIGH = 8500; // 1000 Hz above high data band
 // Protocol fixed values
 const APP_SIG    = 0xA3D7F1;   // 24-bit app fingerprint — see SPEC.md
 const BROADCAST  = 0xFFFFFFFF; // RECIPIENT_UUID for broadcast mode
-const NUM_COPIES = 2;          // payload transmitted twice for redundancy
+const NUM_COPIES = 3;          // 3 copies enables true 2-of-3 majority vote
 
 // Pre-computed constant bit sequences (computed once at module load)
 // APP_SIG is repeated 3× so the decoder can find it even if the first

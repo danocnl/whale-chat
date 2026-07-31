@@ -203,7 +203,7 @@ describe('parseHeader', () => {
   });
 
   it('parses NUM_COPIES as 2', () => {
-    expect(parseHeader(assembleFrame('test')).numCopies).toBe(2);
+    expect(parseHeader(assembleFrame('test')).numCopies).toBe(3);
   });
 });
 
