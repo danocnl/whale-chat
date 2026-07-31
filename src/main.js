@@ -68,7 +68,7 @@ function renderGlobalHeader() {
 
   const brand = document.createElement('div');
   brand.className = 'global-header-brand';
-  brand.innerHTML = `${navIconBat()}<span>Bat Chat</span>`;
+  brand.innerHTML = `${navIconBat()}<span>Bat.Chat</span>`;
   header.appendChild(brand);
 
   const toggle = document.createElement('button');
@@ -88,7 +88,7 @@ function renderNav() {
   // Brand — desktop sidebar only
   const brand = document.createElement('div');
   brand.className = 'nav-brand';
-  brand.innerHTML = `${navIconBat()}<span>Bat Chat</span>`;
+  brand.innerHTML = `${navIconBat()}<span>Bat.Chat</span>`;
   nav.appendChild(brand);
 
   const tabs = [
@@ -163,10 +163,10 @@ renderApp();
 
 function initWelcome() {
   if (localStorage.getItem('bat_welcomed')) return;
-  saveContact('batchat00', 'Bat Chat');
+  saveContact('batchat00', 'Bat.Chat');
   addToHistory({
     sender:    'batchat00',
-    content:   'Welcome to Bat Chat!\n\nSend and receive short text messages with people nearby using audio. No internet, no Bluetooth, no pairing required.',
+    content:   'Welcome to Bat.Chat!\n\nSend and receive short text messages with people nearby using audio. No internet, no Bluetooth, no pairing required.',
     mode:      'broadcast',
     crcStatus: 'clean',
   });
