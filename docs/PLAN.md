@@ -74,18 +74,21 @@
 ### Phase 3 — Integration & Testing
 
 - [x] Loopback test on single device (speaker → mic, same phone)
-- [ ] Two-device test (basic broadcast, short message)
+- [x] Two-device test (phone → phone broadcast, short message)
 - [x] Validate full round-trip: text in → audio → text out
 - [ ] Test at range (across a room, ~3–5m)
 - [ ] Confirm AGC/NS/EC constraints are working correctly (spectrogram check)
 
-> **Notes:** Full round-trip confirmed working on a single device (loopback). Key findings from debugging:
-> - FFT window must be 1024 samples (23ms ≈ 1 symbol) — 4096 (93ms) caused 4-5 symbols to contaminate each frame, making tone ID unreliable
-> - WAKE frequencies must be outside the 8-FSK data bands (15500 Hz / 20000 Hz) — in-band frequencies caused false END triggers via FFT sidelobe leakage
-> - Detection threshold: -85 dBFS — sits cleanly between actual WAKE signal (-40 to -65 dBFS) and data leakage (-96 to -110 dBFS)
-> - WAKE_MIN_TICKS = 20 (400ms) causes WAKING→RECEIVING to fire while WAKE tail is still decaying; 5-tick blackout (100ms) covers the tail
-> - APP_SIG transmitted 3× in preamble; decoder searches for last occurrence — handles up to 2 missed copies due to timing offset
-> - Room acoustics matter significantly: echoey rooms cause inter-symbol interference from reflections; quieter rooms required for reliable decoding
+> **Notes:** Phone-to-phone bidirectional communication confirmed working. Final protocol configuration:
+> - **Modulation**: 4-FSK dual-band, 80ms symbols, 4 bits/symbol = ~50 bps effective
+> - **Frequency bands**: 4–8 kHz (was 10–20 kHz — phone speakers too weak above 9 kHz for cross-device pickup)
+> - **WAKE**: 3000 Hz / 8500 Hz (outside data bands, no FFT leakage)
+> - **Threshold**: -70 dBFS (WAKE signal −22 to −36 dBFS; data leakage −86 to −130 dBFS)
+> - **Symbol duration**: 80ms — 1024-point FFT window (23ms) covers <29% of symbol; dramatically reduces inter-symbol contamination vs 40ms (57%) or 20ms (115%)
+> - **Redundancy**: 3 copies of payload — enables true 2-of-3 majority voting; effective BER drops from ~15% to ~6%
+> - **APP_SIG**: 3× preamble repetition with fuzzy search (≤3 bit errors); decoder aligns to last occurrence
+> - **Key lesson**: errors are timing-driven (sampling phase vs symbol boundary), not purely random — longer symbols are the most impactful reliability improvement
+> - **FEC note**: Reed-Solomon error correction would be the correct long-term fix for pushing reliability above 95%; current 3-copy majority voting is a practical approximation
 
 ---
 
