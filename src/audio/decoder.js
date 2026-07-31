@@ -162,7 +162,7 @@ export function findLastAppSig(bits) {
   for (let i = 0; i <= limit; i += 4) {  // step by 1 symbol (4 bits in 4-FSK)
     const dist = popcount(bitsToNum(bits, i, 24) ^ APP_SIG);
     // ≤ (not <) so we always prefer the LAST occurrence of the best match
-    if (dist <= 2 && dist <= bestDist) {
+    if (dist <= 3 && dist <= bestDist) {
       bestDist   = dist;
       lastOffset = i;
     }
@@ -179,7 +179,8 @@ export function findLastAppSig(bits) {
  * @returns {{ appSig, sender, recipient, numCopies, charCount, _offset }}
  */
 export function parseHeader(bits) {
-  const offset = Math.max(0, findLastAppSig(bits));
+  const found  = findLastAppSig(bits); // -1 = not found within tolerance
+  const offset = found >= 0 ? found : 0;
   const b      = offset > 0 ? bits.slice(offset) : bits;
 
   const appSig    = bitsToNum(b, OFF.APP_SIG_START, 24);
@@ -188,7 +189,8 @@ export function parseHeader(bits) {
   const recipient = bitsToNum(b, OFF.RECIPIENT_START, 32);
   const numCopies = bitsToNum(b, OFF.COPIES_START, 8);
   const charCount = bitsToNum(b, OFF.LENGTH_START, 16);
-  return { appSig, sender, recipient, numCopies, charCount, _offset: offset };
+  // _appSigFound: true if fuzzy search located APP_SIG (even with ≤3 bit errors)
+  return { appSig, sender, recipient, numCopies, charCount, _offset: offset, _appSigFound: found >= 0 };
 }
 
 /**
@@ -416,15 +418,19 @@ export async function startListening(onIncoming) {
   function processFrame(frameBits) {
     const header = parseHeader(frameBits);
     const recipientHex = header.recipient.toString(16).padStart(8, '0');
+    const dist = popcount(header.appSig ^ APP_SIG);
     console.log('[decoder] processFrame — appSig:', header.appSig.toString(16),
-      'expected:', APP_SIG.toString(16), 'alignOffset:', header._offset,
+      dist === 0 ? '✓' : `(${dist} bit errors)`,
+      'alignOffset:', header._offset,
       'sender:', header.sender, 'recipient:', recipientHex,
       'charCount:', header.charCount);
 
-    if (header.appSig !== APP_SIG) {
-      console.log('[decoder] APP_SIG mismatch — tone decode error or frame too corrupted');
+    if (!header._appSigFound) {
+      console.log('[decoder] APP_SIG not found in preamble (too many bit errors)');
       return;
     }
+    // Note: header.appSig may differ slightly from APP_SIG (≤3 bit errors tolerated) —
+    // use _appSigFound not exact equality
 
     // charCount sanity check — bit errors can produce wildly wrong values
     if (header.charCount === 0 || header.charCount > 280) {
