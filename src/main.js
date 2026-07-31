@@ -29,7 +29,6 @@ async function toggleListening() {
       return;
     }
   }
-  // Re-render so the Messages header and nav both reflect new state
   renderApp();
 }
 
@@ -51,14 +50,31 @@ export function navigate(screen) {
 function renderApp() {
   app.innerHTML = '';
 
-  const screenEl = currentScreen === 'history'   ? renderHistory(navigate, { isListening, toggleListening })
+  const screenEl = currentScreen === 'history'   ? renderHistory(navigate)
                  : currentScreen === 'compose'   ? renderCompose(navigate)
                  : currentScreen === 'contacts'  ? renderContacts(navigate)
                  : renderProfile(navigate);
   app.appendChild(screenEl);
+
+  // Mobile-only listen toggle bar — sits just above the bottom nav
+  app.appendChild(renderGlobalHeader());
   app.appendChild(renderNav());
 }
 
+// ── Global header (mobile only) ──────────────────────────────
+function renderGlobalHeader() {
+  const header = document.createElement('div');
+  header.className = 'global-header';
+  const btn = document.createElement('button');
+  btn.className = `listen-toggle-header${isListening ? ' listening' : ''}`;
+  btn.innerHTML = `<span>${isListening ? 'Listening' : 'Listen'}</span>
+    <div class="toggle-switch${isListening ? ' on' : ''}"></div>`;
+  btn.addEventListener('click', toggleListening);
+  header.appendChild(btn);
+  return header;
+}
+
+// ── Nav ──────────────────────────────────────────────────────
 function renderNav() {
   const nav = document.createElement('nav');
   nav.className = 'bottom-nav';
@@ -89,6 +105,17 @@ function renderNav() {
     if (!tab.disabled) btn.addEventListener('click', () => navigate(tab.id));
     nav.appendChild(btn);
   }
+
+  // Listen toggle — desktop sidebar only (pinned to bottom)
+  const listenBtn = document.createElement('button');
+  listenBtn.className = `listen-toggle${isListening ? ' listening' : ''}`;
+  listenBtn.innerHTML = `
+    ${navIconMic()}
+    <span class="toggle-label">${isListening ? 'Listening' : 'Listen'}</span>
+    <div class="toggle-switch${isListening ? ' on' : ''}"></div>
+  `;
+  listenBtn.addEventListener('click', toggleListening);
+  nav.appendChild(listenBtn);
 
   return nav;
 }

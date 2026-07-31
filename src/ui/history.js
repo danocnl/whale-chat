@@ -3,11 +3,9 @@ import {
 } from '../storage/store.js';
 import { showConfirm } from './confirm.js';
 
-export function renderHistory(navigate, listenProps = {}) {
+export function renderHistory(navigate) {
   const el = document.createElement('div');
   el.className = 'screen';
-
-  const { isListening = false, toggleListening = null } = listenProps;
 
   // Internal view state
   let view         = 'threads'; // 'threads' | 'thread'
@@ -30,12 +28,6 @@ export function renderHistory(navigate, listenProps = {}) {
     el.innerHTML = `
       <div class="screen-header">
         <h1>Messages</h1>
-        ${toggleListening ? `
-          <button class="listen-toggle-header${isListening ? ' listening' : ''}" id="btn-listen-toggle">
-            <span>${isListening ? 'Listening' : 'Listen'}</span>
-            <div class="toggle-switch${isListening ? ' on' : ''}"></div>
-          </button>
-        ` : ''}
       </div>
       <div class="screen-body">
         ${threads.length === 0 ? `
@@ -48,7 +40,6 @@ export function renderHistory(navigate, listenProps = {}) {
       </div>
     `;
 
-    el.querySelector('#btn-listen-toggle')?.addEventListener('click', () => toggleListening?.());
 
 
     el.querySelectorAll('.btn-delete-thread').forEach(btn => {

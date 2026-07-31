@@ -56,8 +56,9 @@ describe('validateMessage', () => {
 // estimateDuration
 // ---------------------------------------------------------------------------
 describe('estimateDuration', () => {
-  it('short messages complete in under 2 seconds', () => {
-    expect(estimateDuration('Hi!')).toBeLessThan(2000);
+  it('short messages complete in under 6 seconds', () => {
+    // 40ms symbols + 3× APP_SIG preamble — overhead is ~2.6s before payload
+    expect(estimateDuration('Hi!')).toBeLessThan(6000);
   });
 
   it('longer messages take proportionally more time', () => {
@@ -66,8 +67,9 @@ describe('estimateDuration', () => {
     expect(long).toBeGreaterThan(short);
   });
 
-  it('280-char message is under 15 seconds', () => {
-    expect(estimateDuration('a'.repeat(280))).toBeLessThan(15000);
+  it('280-char message is under 35 seconds', () => {
+    // 40ms symbols significantly increases transmission time
+    expect(estimateDuration('a'.repeat(280))).toBeLessThan(30000);
   });
 
   it('always includes WAKE + END overhead (~800ms)', () => {
@@ -125,22 +127,22 @@ describe('toSymbols', () => {
     expect(symbols.every(s => s.hi >= 0 && s.hi <= 7)).toBe(true);
   });
 
-  it('6 bits → 1 symbol', () => {
-    expect(toSymbols([0, 0, 0, 0, 0, 0])).toHaveLength(1);
-    expect(toSymbols([1, 1, 1, 1, 1, 1])).toHaveLength(1);
+  it('4 bits → 1 symbol', () => {
+    expect(toSymbols([0, 0, 0, 0])).toHaveLength(1);
+    expect(toSymbols([1, 1, 1, 1])).toHaveLength(1);
   });
 
-  it('pads to a multiple of 6', () => {
-    // 7 bits should produce 2 symbols (padded to 12)
-    expect(toSymbols([1, 0, 1, 0, 1, 0, 1])).toHaveLength(2);
+  it('pads to a multiple of 4', () => {
+    // 5 bits should produce 2 symbols (padded to 8)
+    expect(toSymbols([1, 0, 1, 0, 1])).toHaveLength(2);
   });
 
-  it('maps 3-bit groups to correct indices', () => {
-    // [0,0,0, 0,0,0] → lo=0, hi=0
-    expect(toSymbols([0,0,0, 0,0,0])[0]).toEqual({ lo: 0, hi: 0 });
-    // [1,1,1, 1,1,1] → lo=7, hi=7
-    expect(toSymbols([1,1,1, 1,1,1])[0]).toEqual({ lo: 7, hi: 7 });
-    // [0,1,0, 1,0,1] → lo=2, hi=5
-    expect(toSymbols([0,1,0, 1,0,1])[0]).toEqual({ lo: 2, hi: 5 });
+  it('maps 2-bit groups to correct indices (4-FSK)', () => {
+    // [0,0, 0,0] → lo=0, hi=0
+    expect(toSymbols([0,0, 0,0])[0]).toEqual({ lo: 0, hi: 0 });
+    // [1,1, 1,1] → lo=3, hi=3
+    expect(toSymbols([1,1, 1,1])[0]).toEqual({ lo: 3, hi: 3 });
+    // [1,0, 0,1] → lo=2, hi=1
+    expect(toSymbols([1,0, 0,1])[0]).toEqual({ lo: 2, hi: 1 });
   });
 });

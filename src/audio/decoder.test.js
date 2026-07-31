@@ -33,8 +33,8 @@ const FFT_SIZE   = 1024;
 const SAMPLE_RATE = 44100;
 const freqToBin  = f => Math.round(f * FFT_SIZE / SAMPLE_RATE);
 
-const LOW_FREQS  = [16000, 16250, 16500, 16750, 17000, 17250, 17500, 17750];
-const HIGH_FREQS = [18000, 18250, 18500, 18750, 19000, 19250, 19500, 19750];
+const LOW_FREQS  = [10000, 10500, 11000, 11500];
+const HIGH_FREQS = [12500, 13000, 13500, 14000];
 const LOW_BINS   = LOW_FREQS.map(freqToBin);
 const HIGH_BINS  = HIGH_FREQS.map(freqToBin);
 
@@ -70,8 +70,8 @@ describe('identifyToneIndex', () => {
   });
 
   it('returns the dominant tone when another is present but weaker', () => {
-    const fft = syntheticFFT([16750]); // LOW_FREQS[3]
-    fft[freqToBin(16000)] = -80; // weak background at tone 0
+    const fft = syntheticFFT([11500]); // LOW_FREQS[3]
+    fft[freqToBin(10000)] = -80; // weak background at tone 0
     expect(identifyToneIndex(fft, LOW_BINS)).toBe(3);
   });
 
@@ -79,14 +79,14 @@ describe('identifyToneIndex', () => {
     expect(identifyToneIndex(syntheticFFT([16000]), LOW_BINS)).toBe(0);
   });
 
-  it('tone 7 gives index 7', () => {
-    expect(identifyToneIndex(syntheticFFT([17750]), LOW_BINS)).toBe(7);
+  it('tone 3 gives index 3 (max for 4-FSK)', () => {
+    expect(identifyToneIndex(syntheticFFT([11500]), LOW_BINS)).toBe(3);
   });
 
   it('handles both sub-bands simultaneously without cross-contamination', () => {
-    const fft = syntheticFFT([16500, 19000]); // LOW[2], HIGH[4]
+    const fft = syntheticFFT([11000, 13000]); // LOW[2], HIGH[1]
     expect(identifyToneIndex(fft, LOW_BINS)).toBe(2);
-    expect(identifyToneIndex(fft, HIGH_BINS)).toBe(4);
+    expect(identifyToneIndex(fft, HIGH_BINS)).toBe(1);
   });
 });
 
@@ -94,16 +94,16 @@ describe('identifyToneIndex', () => {
 // isWakePresent
 // ---------------------------------------------------------------------------
 describe('isWakePresent', () => {
-  it('returns true when both WAKE frequencies (15.5kHz + 20kHz) are active', () => {
-    expect(isWakePresent(syntheticFFT([15500, 20000]))).toBe(true);
+  it('returns true when both WAKE frequencies (9kHz + 15kHz) are active', () => {
+    expect(isWakePresent(syntheticFFT([9000, 15000]))).toBe(true);
   });
 
   it('returns false when only the low WAKE frequency is active', () => {
-    expect(isWakePresent(syntheticFFT([15500]))).toBe(false);
+    expect(isWakePresent(syntheticFFT([9000]))).toBe(false);
   });
 
   it('returns false when only the high WAKE frequency is active', () => {
-    expect(isWakePresent(syntheticFFT([20000]))).toBe(false);
+    expect(isWakePresent(syntheticFFT([15000]))).toBe(false);
   });
 
   it('returns false on a noise floor (all bins at -100 dB)', () => {
@@ -112,12 +112,11 @@ describe('isWakePresent', () => {
   });
 
   it('returns false when data-band tones are active but not WAKE tones', () => {
-    expect(isWakePresent(syntheticFFT([16000, 18000]))).toBe(false);
+    expect(isWakePresent(syntheticFFT([10000, 12500]))).toBe(false);
   });
 
   it('does not trigger on APP_SIG symbol tones alone', () => {
-    // APP_SIG plays data FSK tones, not WAKE tones
-    expect(isWakePresent(syntheticFFT([16250, 18750]))).toBe(false);
+    expect(isWakePresent(syntheticFFT([10500, 13000]))).toBe(false);
   });
 });
 
@@ -125,26 +124,26 @@ describe('isWakePresent', () => {
 // symbolsToBits
 // ---------------------------------------------------------------------------
 describe('symbolsToBits', () => {
-  it('{lo:0, hi:0} → 6 zeros', () => {
-    expect(symbolsToBits([{ lo: 0, hi: 0 }])).toEqual([0,0,0,0,0,0]);
+  it('{lo:0, hi:0} → 4 zeros', () => {
+    expect(symbolsToBits([{ lo: 0, hi: 0 }])).toEqual([0,0,0,0]);
   });
 
-  it('{lo:7, hi:7} → 6 ones', () => {
-    expect(symbolsToBits([{ lo: 7, hi: 7 }])).toEqual([1,1,1,1,1,1]);
+  it('{lo:3, hi:3} → 4 ones', () => {
+    expect(symbolsToBits([{ lo: 3, hi: 3 }])).toEqual([1,1,1,1]);
   });
 
-  it('{lo:2, hi:5} → [0,1,0, 1,0,1]', () => {
-    // lo=2=010, hi=5=101
-    expect(symbolsToBits([{ lo: 2, hi: 5 }])).toEqual([0,1,0,1,0,1]);
+  it('{lo:2, hi:1} → [1,0, 0,1]', () => {
+    // lo=2=10, hi=1=01
+    expect(symbolsToBits([{ lo: 2, hi: 1 }])).toEqual([1,0,0,1]);
   });
 
-  it('is the inverse of toSymbols (for multiples of 6 bits)', () => {
-    const bits = [0,1,0,1,0,1, 1,0,1,0,1,0, 0,0,1,1,1,0]; // 18 bits, multiple of 6
+  it('is the inverse of toSymbols (for multiples of 4 bits)', () => {
+    const bits = [0,1,1,0, 1,0,0,1, 1,1,0,0]; // 12 bits, multiple of 4
     expect(symbolsToBits(toSymbols(bits))).toEqual(bits);
   });
 
-  it('produces correct length (6 bits per symbol)', () => {
-    expect(symbolsToBits([{ lo: 0, hi: 0 }, { lo: 7, hi: 7 }])).toHaveLength(12);
+  it('produces correct length (4 bits per symbol)', () => {
+    expect(symbolsToBits([{ lo: 0, hi: 0 }, { lo: 3, hi: 3 }])).toHaveLength(8);
   });
 });
 

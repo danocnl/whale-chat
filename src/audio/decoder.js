@@ -23,13 +23,14 @@ const SAMPLE_RATE   = 44100;
 // 4096 (93ms) contaminated the spectrum with 4-5 previous symbols,
 // making tone identification unreliable.
 const FFT_SIZE      = 1024;
-const SYMBOL_MS     = 20;
+const SYMBOL_MS     = 40; // must match encoder SYMBOL_S × 1000
 
-const LOW_FREQS  = [16000, 16250, 16500, 16750, 17000, 17250, 17500, 17750];
-const HIGH_FREQS = [18000, 18250, 18500, 18750, 19000, 19250, 19500, 19750];
+// 4-FSK: 4 tones per sub-band, 500 Hz spacing — must match encoder exactly
+const LOW_FREQS  = [10000, 10500, 11000, 11500];
+const HIGH_FREQS = [12500, 13000, 13500, 14000];
 // Must match encoder exactly — see encoder.js for rationale
-const WAKE_LOW   = 15500; // 500 Hz below data band
-const WAKE_HIGH  = 20000; // 250 Hz above data band
+const WAKE_LOW   = 9000;  // 1000 Hz below low data band
+const WAKE_HIGH  = 15000; // 1000 Hz above high data band
 const APP_SIG    = 0xA3D7F1;
 const BROADCAST  = 0xFFFFFFFF;
 
@@ -44,14 +45,14 @@ const WAKE_HIGH_BIN = freqToBin(WAKE_HIGH);
 //   - Actual WAKE/END signal: -39 to -72 dBFS  → above threshold ✓
 //   - FFT leakage from nearby data tones: -96 to -110 dBFS → below threshold ✓
 //   - Noise floor: -145 to -170 dBFS → well below threshold ✓
-const SIGNAL_DB = -85;
+const SIGNAL_DB = -90;
 
 // WAKE must be sustained for at least this many ticks (20ms each) = 400ms
-const WAKE_MIN_TICKS = 20;
+const WAKE_MIN_TICKS = 10; // 10 × 40ms = 400ms — WAKE is 500ms = 12.5 ticks, so 10 is safely within
 
 // Maximum data symbols to buffer before declaring a frame invalid
-// 700 symbols × 6 bits = 4200 bits — enough for 2 × max payload + overhead
-const MAX_FRAME_SYMBOLS = 700;
+// 4-FSK: 4 bits/symbol. 1200 × 4 = 4800 bits — enough for 2 × max payload + overhead
+const MAX_FRAME_SYMBOLS = 1200;
 
 // Frame bit offsets — relative to the ALIGNED frame start (last APP_SIG copy).
 // After alignment, the structure is identical to the single-copy case:
@@ -115,11 +116,12 @@ export function isWakePresent(fftData) {
  * @param {Array<{lo: number, hi: number}>} symbols
  * @returns {number[]}
  */
+// 4-FSK: 2 bits per sub-band per symbol → 4 bits total per symbol
 export function symbolsToBits(symbols) {
   const bits = [];
   for (const { lo, hi } of symbols) {
-    bits.push((lo >> 2) & 1, (lo >> 1) & 1, lo & 1);
-    bits.push((hi >> 2) & 1, (hi >> 1) & 1, hi & 1);
+    bits.push((lo >> 1) & 1, lo & 1);
+    bits.push((hi >> 1) & 1, hi & 1);
   }
   return bits;
 }
@@ -147,11 +149,23 @@ export function bitsToNum(bits, start, len) {
  * @param {number[]} bits
  * @returns {number}
  */
+function popcount(n) {
+  let c = 0;
+  while (n) { c += n & 1; n >>>= 1; }
+  return c;
+}
+
 export function findLastAppSig(bits) {
   let lastOffset = -1;
-  const limit = Math.min(bits.length - 24, 90); // 3 copies × 24 bits + margin
-  for (let i = 0; i <= limit; i += 6) {  // step by 1 symbol (6 bits)
-    if (bitsToNum(bits, i, 24) === APP_SIG) lastOffset = i;
+  let bestDist   = Infinity;
+  const limit    = Math.min(bits.length - 24, 90); // 3 copies × 24 bits + margin
+  for (let i = 0; i <= limit; i += 4) {  // step by 1 symbol (4 bits in 4-FSK)
+    const dist = popcount(bitsToNum(bits, i, 24) ^ APP_SIG);
+    // ≤ (not <) so we always prefer the LAST occurrence of the best match
+    if (dist <= 2 && dist <= bestDist) {
+      bestDist   = dist;
+      lastOffset = i;
+    }
   }
   return lastOffset;
 }
@@ -298,9 +312,9 @@ export async function startListening(onIncoming) {
 
   // After transitioning to RECEIVING, ignore all tones for this many ticks (300ms).
   // Ensures the WAKE tail has fully decayed before we start collecting or detecting END.
-  const BLACKOUT_TICKS = 5; // 5 × 20ms = 100ms — just enough to cover the WAKE tail
+  const BLACKOUT_TICKS = 3; // 3 × 40ms = 120ms — covers WAKE tail decay
 
-  const END_MIN_TICKS  = 5;  // 5 × 20ms = 100ms sustained WAKE for END confirmation
+  const END_MIN_TICKS  = 4;  // 4 × 40ms = 160ms sustained WAKE — END signal is 300ms
 
   function wakePresent() {
     return fftData[actualWakeLowBin] > SIGNAL_DB &&
@@ -394,24 +408,40 @@ export async function startListening(onIncoming) {
 
   function processFrame(frameBits) {
     const header = parseHeader(frameBits);
+    const recipientHex = header.recipient.toString(16).padStart(8, '0');
     console.log('[decoder] processFrame — appSig:', header.appSig.toString(16),
       'expected:', APP_SIG.toString(16), 'alignOffset:', header._offset,
-      'sender:', header.sender, 'charCount:', header.charCount);
+      'sender:', header.sender, 'recipient:', recipientHex,
+      'charCount:', header.charCount);
 
     if (header.appSig !== APP_SIG) {
       console.log('[decoder] APP_SIG mismatch — tone decode error or frame too corrupted');
       return;
     }
 
-    const myUUID      = getShortUUID();
-    const recipientHex = header.recipient.toString(16).padStart(8, '0');
-    const isForMe     = header.recipient === BROADCAST || recipientHex === myUUID;
+    // charCount sanity check — bit errors can produce wildly wrong values
+    if (header.charCount === 0 || header.charCount > 280) {
+      console.log('[decoder] charCount out of range:', header.charCount, '— discarding');
+      return;
+    }
 
-    if (!isForMe) return; // directed to someone else — silent discard
+    const myUUID  = getShortUUID();
+    const isBroadcast = header.recipient === BROADCAST;
+    const isDirected  = !isBroadcast && recipientHex === myUUID;
+    // Accept broadcast OR directed-to-me. With bit errors, recipient bits
+    // may be corrupted — if charCount is valid and APP_SIG matched, treat
+    // as broadcast so the user can still accept/reject via the UI prompt.
+    const isForMe = isBroadcast || isDirected ||
+                    header.recipient.toString(2).split('1').length - 1 > 28; // ≥29 of 32 bits set → corrupted broadcast
+
+    if (!isForMe) {
+      console.log('[decoder] not for me — recipient:', recipientHex, 'me:', myUUID);
+      return;
+    }
 
     onIncoming({
       senderUUID: header.sender,
-      isDirected: header.recipient !== BROADCAST,
+      isDirected:  isDirected,
       frameBits,
     });
   }

@@ -231,6 +231,21 @@ textarea:focus, input:focus { border-color: var(--accent); }
   cursor: not-allowed;
 }
 
+/* ── Global header (mobile only) ─────────────────────────── */
+.global-header {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 8px 16px;
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+  background: var(--bg);
+}
+
+@media (min-width: 640px) {
+  .global-header { display: none; }
+}
+
 /* ── Listen toggle (Messages header) ─────────────────────── */
 .listen-toggle-header {
   display: flex;

@@ -19,21 +19,25 @@ import { getShortUUID } from '../storage/store.js';
 // ---------------------------------------------------------------------------
 
 const SAMPLE_RATE       = 44100;
-const SYMBOL_S          = 0.020; // 20ms per symbol
+const SYMBOL_S          = 0.040; // 40ms per symbol — 1024 FFT window (23ms) covers ~57% of
+                                  // one symbol, vs 115% at 20ms, greatly reducing inter-symbol contamination
 const WAKE_S            = 0.500; // 500ms sustained tones
 const END_S             = 0.300; // 300ms sustained tones
 const SCHEDULE_OFFSET_S = 0.050; // 50ms ahead of current time for scheduling
 
-// 8 tones per sub-band, 250 Hz spacing
-const LOW_FREQS  = [16000, 16250, 16500, 16750, 17000, 17250, 17500, 17750];
-const HIGH_FREQS = [18000, 18250, 18500, 18750, 19000, 19250, 19500, 19750];
+// 4 tones per sub-band, 500 Hz spacing — doubles bin separation vs 8-FSK,
+// making tone identification far more reliable in noisy conditions.
+// Cost: 2 bits/symbol per band (was 3) → ~170 bps effective (was ~255 bps)
+// Shifted to 10-14 kHz where speakers produce 10-15 dB more power than 16-20 kHz
+const LOW_FREQS  = [10000, 10500, 11000, 11500];
+const HIGH_FREQS = [12500, 13000, 13500, 14000];
 
 // WAKE frequencies sit OUTSIDE the 8-FSK data bands entirely.
 // This eliminates both data-symbol collisions AND FFT sidelobe leakage
 // from adjacent data tones, preventing false WAKE/END triggers.
 // Low data band: 16000-17750 Hz  |  High data band: 18000-19750 Hz
-const WAKE_LOW  = 15500; // 500 Hz below data band floor
-const WAKE_HIGH = 20000; // 250 Hz above data band ceiling
+const WAKE_LOW  = 9000;  // 1000 Hz below low data band
+const WAKE_HIGH = 15000; // 1000 Hz above high data band
 
 // Protocol fixed values
 const APP_SIG    = 0xA3D7F1;   // 24-bit app fingerprint — see SPEC.md
@@ -123,15 +127,15 @@ export async function transmit(text, recipientUUID = null) {
 export function estimateDuration(text) {
   const payloadBits = encodedBitLength(text);
   const totalDataBits =
-    APP_SIG_BITS.length  + // 24
-    SYNC_BITS.length     + // 18
-    32                   + // SENDER_UUID
-    32                   + // RECIPIENT_UUID
-    NUM_COPIES_BITS.length + // 8
-    16                   + // LENGTH
+    APP_SIG_REPEATED.length  + // 72 (3 copies)
+    SYNC_BITS.length         + // 18
+    32                       + // SENDER_UUID
+    32                       + // RECIPIENT_UUID
+    NUM_COPIES_BITS.length   + // 8
+    16                       + // LENGTH
     (payloadBits + 16) * NUM_COPIES; // (payload + CRC-16) × 2
 
-  const symbolCount = Math.ceil(totalDataBits / 6);
+  const symbolCount = Math.ceil(totalDataBits / 4); // 4-FSK: 4 bits per symbol
   const dataMs      = symbolCount * (SYMBOL_S * 1000);
   const overheadMs  = (WAKE_S + END_S) * 1000;
   return Math.ceil(dataMs + overheadMs);
@@ -177,7 +181,7 @@ async function playFrame(dataBits) {
 
   // Signal chain: osc → gain (0.5 each) → masterGain → speakers
   const master = ctx.createGain();
-  master.gain.value = 0.8;
+  master.gain.value = 1.0; // maximise output power
   master.connect(ctx.destination);
 
   const osc1 = ctx.createOscillator();
@@ -236,18 +240,18 @@ function toBits(n, width) {
 
 /**
  * Convert a flat bit array into dual-band symbol pairs.
- * Every 6 bits → one symbol: first 3 bits = low band index, next 3 = high band index.
- * Pads with zeros to the nearest multiple of 6.
+ * 4-FSK: every 4 bits → one symbol: first 2 bits = low band index, next 2 = high band index.
+ * Pads with zeros to the nearest multiple of 4.
  * Exported for testing.
  */
 export function toSymbols(bits) {
   const padded = [...bits];
-  while (padded.length % 6 !== 0) padded.push(0);
+  while (padded.length % 4 !== 0) padded.push(0);
 
   const symbols = [];
-  for (let i = 0; i < padded.length; i += 6) {
-    const lo = (padded[i]   << 2) | (padded[i+1] << 1) | padded[i+2];
-    const hi = (padded[i+3] << 2) | (padded[i+4] << 1) | padded[i+5];
+  for (let i = 0; i < padded.length; i += 4) {
+    const lo = (padded[i]   << 1) | padded[i+1];
+    const hi = (padded[i+2] << 1) | padded[i+3];
     symbols.push({ lo, hi });
   }
   return symbols;
