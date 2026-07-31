@@ -28,7 +28,8 @@ export function renderCompose(navigate) {
         <div>
           <div class="textarea-wrap">
             <textarea id="msg-input" rows="5" placeholder="Type a message…" maxlength="${MAX}"
-              style="padding-bottom:32px"></textarea>
+              style="padding-bottom:32px"
+              autocomplete="off" autocorrect="off" autocapitalize="sentences" spellcheck="true"></textarea>
             <div class="char-count-float" id="char-count">0 / ${MAX}</div>
             ${voiceSupported ? `
               <button class="btn-voice-float" id="btn-voice" title="Voice input">
@@ -44,7 +45,7 @@ export function renderCompose(navigate) {
           <div class="error-msg" id="error-msg"></div>
         </div>
 
-        <div class="duration-hint" id="duration-hint"></div>
+        <div class="duration-hint" id="duration-hint" style="display:none"></div>
 
         <div id="send-area" style="display:flex;gap:8px">
           <button class="btn btn-ghost" id="btn-clear-msg" style="padding:0 16px;flex-shrink:0" title="Clear">✕</button>
@@ -132,8 +133,10 @@ export function renderCompose(navigate) {
     if (valid) {
       const ms = estimateDuration(text);
       durationHint.textContent = `~${(ms / 1000).toFixed(1)}s to transmit`;
+      durationHint.style.display = '';
     } else {
       durationHint.textContent = '';
+      durationHint.style.display = 'none';
     }
 
     // Recipient check
@@ -174,7 +177,7 @@ export function renderCompose(navigate) {
     } finally {
       clearInterval(interval);
       progressBar.style.width = '0%';
-      sendArea.style.display    = '';
+      sendArea.style.display    = 'flex'; // restore flex (not block)
       sendProgress.style.display = 'none';
     }
   });

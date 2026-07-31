@@ -5,9 +5,10 @@ export function renderContacts(navigate) {
   el.className = 'screen';
 
   let adding = false;
+  let editingUuid = null;
 
   function render() {
-    const contacts = Object.entries(getContacts());
+    const contacts = Object.entries(getContacts()).sort(([, a], [, b]) => a.localeCompare(b));
 
     el.innerHTML = `
       <div class="screen-header">
@@ -35,7 +36,7 @@ export function renderContacts(navigate) {
 
         ${contacts.length === 0 && !adding ? emptyState() : `
           <div class="thread-list">
-            ${contacts.map(([uuid, name]) => contactRow(uuid, name)).join('')}
+            ${contacts.map(([uuid, name]) => contactRow(uuid, name, uuid === editingUuid)).join('')}
           </div>
         `}
 
@@ -123,29 +124,80 @@ export function renderContacts(navigate) {
         render();
       });
     });
+
+    el.querySelectorAll('.btn-edit-contact').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        editingUuid = btn.dataset.uuid;
+        render();
+        el.querySelector('.contact-edit-input')?.focus();
+      });
+    });
+
+    el.querySelectorAll('.btn-cancel-edit').forEach(btn => {
+      btn.addEventListener('click', () => { editingUuid = null; render(); });
+    });
+
+    el.querySelectorAll('.btn-save-edit').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const input = el.querySelector('.contact-edit-input');
+        const newName = input?.value.trim();
+        if (newName) { saveContact(btn.dataset.uuid, newName); }
+        editingUuid = null;
+        render();
+      });
+    });
+
+    el.querySelectorAll('.contact-edit-input').forEach(input => {
+      input.addEventListener('keydown', e => {
+        if (e.key === 'Enter') el.querySelector('.btn-save-edit')?.click();
+        if (e.key === 'Escape') el.querySelector('.btn-cancel-edit')?.click();
+      });
+    });
   }
 
   render();
   return el;
 }
 
-function contactRow(uuid, name) {
-  const initial = name.slice(0, 1).toUpperCase();
+function contactRow(uuid, name, editing) {
+  const iconEdit = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>`;
+  const iconTrash = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>`;
+
+  if (editing) {
+    return `
+      <div class="thread-item contact-editing" style="cursor:default;align-items:center">
+        <div class="thread-body">
+          <input class="contact-edit-input" value="${escHtml(name)}" maxlength="32"
+            style="margin-bottom:4px;padding:6px 10px;font-size:14px;font-weight:600" />
+          <div class="thread-preview" style="padding-left:2px">${uuid}</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0">
+          <button class="btn btn-primary btn-save-edit" data-uuid="${uuid}"
+            style="padding:0 14px;height:32px;font-size:13px">Save</button>
+          <button class="btn btn-ghost btn-cancel-edit"
+            style="padding:0 12px;height:32px;font-size:13px">Cancel</button>
+        </div>
+      </div>
+    `;
+  }
+
   return `
-    <div class="thread-item" style="cursor:default">
-      <div class="thread-avatar">${initial}</div>
+    <div class="thread-item" style="cursor:default;align-items:center">
       <div class="thread-body">
         <div class="thread-header-row">
           <span class="thread-name">${escHtml(name)}</span>
         </div>
         <div class="thread-preview">${uuid}</div>
       </div>
-      <button class="btn-delete-thread btn-del-contact" data-uuid="${uuid}" title="Delete contact">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
-          <path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/>
-        </svg>
-      </button>
+      <div style="display:flex;gap:4px;flex-shrink:0">
+        <button class="btn-delete-thread btn-edit-contact" data-uuid="${uuid}" title="Edit nickname">
+          ${iconEdit}
+        </button>
+        <button class="btn-delete-thread btn-del-contact" data-uuid="${uuid}" title="Delete contact">
+          ${iconTrash}
+        </button>
+      </div>
     </div>
   `;
 }

@@ -148,7 +148,6 @@ function threadItem({ sender, messages }) {
 
   return `
     <div class="thread-item" data-sender="${sender}">
-      <div class="thread-avatar">${name.slice(0, 1).toUpperCase()}</div>
       <div class="thread-body">
         <div class="thread-header-row">
           <span class="thread-name">${escHtml(name)}</span>
