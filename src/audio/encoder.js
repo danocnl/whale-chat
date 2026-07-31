@@ -29,15 +29,16 @@ const SCHEDULE_OFFSET_S = 0.050; // 50ms ahead of current time for scheduling
 // making tone identification far more reliable in noisy conditions.
 // Cost: 2 bits/symbol per band (was 3) → ~170 bps effective (was ~255 bps)
 // Shifted to 10-14 kHz where speakers produce 10-15 dB more power than 16-20 kHz
-const LOW_FREQS  = [10000, 10500, 11000, 11500];
-const HIGH_FREQS = [12500, 13000, 13500, 14000];
+// 4-8 kHz — within reliable output range of ALL device speakers including phones
+const LOW_FREQS  = [4000, 4500, 5000, 5500];
+const HIGH_FREQS = [6000, 6500, 7000, 7500];
 
 // WAKE frequencies sit OUTSIDE the 8-FSK data bands entirely.
 // This eliminates both data-symbol collisions AND FFT sidelobe leakage
 // from adjacent data tones, preventing false WAKE/END triggers.
 // Low data band: 16000-17750 Hz  |  High data band: 18000-19750 Hz
-const WAKE_LOW  = 9000;  // 1000 Hz below low data band
-const WAKE_HIGH = 15000; // 1000 Hz above high data band
+const WAKE_LOW  = 3000; // 1000 Hz below low data band
+const WAKE_HIGH = 8500; // 1000 Hz above high data band
 
 // Protocol fixed values
 const APP_SIG    = 0xA3D7F1;   // 24-bit app fingerprint — see SPEC.md

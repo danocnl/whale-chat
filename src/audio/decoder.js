@@ -26,11 +26,11 @@ const FFT_SIZE      = 1024;
 const SYMBOL_MS     = 80; // must match encoder SYMBOL_S × 1000
 
 // 4-FSK: 4 tones per sub-band, 500 Hz spacing — must match encoder exactly
-const LOW_FREQS  = [10000, 10500, 11000, 11500];
-const HIGH_FREQS = [12500, 13000, 13500, 14000];
+const LOW_FREQS  = [4000, 4500, 5000, 5500];
+const HIGH_FREQS = [6000, 6500, 7000, 7500];
 // Must match encoder exactly — see encoder.js for rationale
-const WAKE_LOW   = 9000;  // 1000 Hz below low data band
-const WAKE_HIGH  = 15000; // 1000 Hz above high data band
+const WAKE_LOW   = 3000; // 1000 Hz below low data band
+const WAKE_HIGH  = 8500; // 1000 Hz above high data band
 const APP_SIG    = 0xA3D7F1;
 const BROADCAST  = 0xFFFFFFFF;
 

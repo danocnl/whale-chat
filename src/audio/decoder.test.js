@@ -33,8 +33,8 @@ const FFT_SIZE   = 1024;
 const SAMPLE_RATE = 44100;
 const freqToBin  = f => Math.round(f * FFT_SIZE / SAMPLE_RATE);
 
-const LOW_FREQS  = [10000, 10500, 11000, 11500];
-const HIGH_FREQS = [12500, 13000, 13500, 14000];
+const LOW_FREQS  = [4000, 4500, 5000, 5500];
+const HIGH_FREQS = [6000, 6500, 7000, 7500];
 const LOW_BINS   = LOW_FREQS.map(freqToBin);
 const HIGH_BINS  = HIGH_FREQS.map(freqToBin);
 
@@ -70,21 +70,21 @@ describe('identifyToneIndex', () => {
   });
 
   it('returns the dominant tone when another is present but weaker', () => {
-    const fft = syntheticFFT([11500]); // LOW_FREQS[3]
-    fft[freqToBin(10000)] = -80; // weak background at tone 0
+    const fft = syntheticFFT([5500]); // LOW_FREQS[3]
+    fft[freqToBin(4000)] = -80; // weak background at tone 0
     expect(identifyToneIndex(fft, LOW_BINS)).toBe(3);
   });
 
   it('tone 0 gives index 0', () => {
-    expect(identifyToneIndex(syntheticFFT([16000]), LOW_BINS)).toBe(0);
+    expect(identifyToneIndex(syntheticFFT([4000]), LOW_BINS)).toBe(0);
   });
 
   it('tone 3 gives index 3 (max for 4-FSK)', () => {
-    expect(identifyToneIndex(syntheticFFT([11500]), LOW_BINS)).toBe(3);
+    expect(identifyToneIndex(syntheticFFT([5500]), LOW_BINS)).toBe(3);
   });
 
   it('handles both sub-bands simultaneously without cross-contamination', () => {
-    const fft = syntheticFFT([11000, 13000]); // LOW[2], HIGH[1]
+    const fft = syntheticFFT([5000, 6500]); // LOW[2], HIGH[1]
     expect(identifyToneIndex(fft, LOW_BINS)).toBe(2);
     expect(identifyToneIndex(fft, HIGH_BINS)).toBe(1);
   });
@@ -95,7 +95,7 @@ describe('identifyToneIndex', () => {
 // ---------------------------------------------------------------------------
 describe('isWakePresent', () => {
   it('returns true when both WAKE frequencies (9kHz + 15kHz) are active', () => {
-    expect(isWakePresent(syntheticFFT([9000, 15000]))).toBe(true);
+    expect(isWakePresent(syntheticFFT([3000, 8500]))).toBe(true);
   });
 
   it('returns false when only the low WAKE frequency is active', () => {
@@ -112,11 +112,11 @@ describe('isWakePresent', () => {
   });
 
   it('returns false when data-band tones are active but not WAKE tones', () => {
-    expect(isWakePresent(syntheticFFT([10000, 12500]))).toBe(false);
+    expect(isWakePresent(syntheticFFT([4000, 6000]))).toBe(false);
   });
 
   it('does not trigger on APP_SIG symbol tones alone', () => {
-    expect(isWakePresent(syntheticFFT([10500, 13000]))).toBe(false);
+    expect(isWakePresent(syntheticFFT([4500, 6500]))).toBe(false);
   });
 });
 

@@ -46,7 +46,8 @@ export function renderCompose(navigate) {
 
         <div class="duration-hint" id="duration-hint"></div>
 
-        <div id="send-area">
+        <div id="send-area" style="display:flex;gap:8px">
+          <button class="btn btn-ghost" id="btn-clear-msg" style="padding:0 16px;flex-shrink:0" title="Clear">✕</button>
           <button class="btn btn-primary btn-full" id="send-btn" disabled>Send</button>
         </div>
 
@@ -166,8 +167,7 @@ export function renderCompose(navigate) {
       progressBar.style.width = '100%';
       progressLabel.textContent = 'Sent!';
       await pause(700);
-      input.value = '';
-      update();
+      // Keep message in box — user can clear manually
     } catch (err) {
       progressLabel.textContent = `Error: ${err.message}`;
       await pause(1500);
@@ -177,6 +177,13 @@ export function renderCompose(navigate) {
       sendArea.style.display    = '';
       sendProgress.style.display = 'none';
     }
+  });
+
+  // ── Clear ────────────────────────────────────────────────
+  el.querySelector('#btn-clear-msg').addEventListener('click', () => {
+    input.value = '';
+    update();
+    input.focus();
   });
 
   // ── Voice input ──────────────────────────────────────────
