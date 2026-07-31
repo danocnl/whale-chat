@@ -42,10 +42,10 @@ const WAKE_LOW_BIN  = freqToBin(WAKE_LOW);
 const WAKE_HIGH_BIN = freqToBin(WAKE_HIGH);
 
 // Signal threshold (dBFS). Chosen to sit cleanly between:
-//   - Actual WAKE/END signal: -39 to -72 dBFS  → above threshold ✓
-//   - FFT leakage from nearby data tones: -96 to -110 dBFS → below threshold ✓
-//   - Noise floor: -145 to -170 dBFS → well below threshold ✓
-const SIGNAL_DB = -90;
+//   - Actual WAKE/END signal: -24 to -40 dBFS   → above threshold ✓
+//   - Data-phase cross-contamination: -68 to -87 dBFS → below threshold ✓
+//   - Noise floor: -120 to -165 dBFS             → well below threshold ✓
+const SIGNAL_DB = -70;
 
 // WAKE must be sustained for at least this many ticks (20ms each) = 400ms
 const WAKE_MIN_TICKS = 10; // 10 × 40ms = 400ms — WAKE is 500ms = 12.5 ticks, so 10 is safely within
