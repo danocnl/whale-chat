@@ -149,3 +149,29 @@
 - [ ] App name / branding (name TBD)
 
 > **Notes:** —
+
+---
+
+### Phase 9 — Template / Preset Messages
+
+> **Context:** Key use case is security/logistics teams sending encoded messages over tannoy/PA systems. Input speed is critical. Templates allow one-tap dispatch of pre-approved message codes without composing from scratch.
+
+- [ ] Template management screen (CRUD — add, edit, delete, reorder)
+- [ ] Templates section in desktop sidebar (placeholder added, disabled for now)
+- [ ] One-tap send from template list (bypasses compose screen entirely)
+- [ ] Template categories / grouping (e.g. "All clear", "Alert", "Logistics")
+- [ ] Pin frequently used templates to top
+
+> **Notes:** Sidebar placeholder added in Phase 4 UI. Full implementation deferred — this is the highest-value feature for the tannoy/PA use case.
+
+---
+
+## Future Considerations
+
+> Items noted for future review — not scheduled, no implementation started.
+
+**Auto-start listener on app open**
+Currently the listen toggle is manual. For field operatives who are primarily receivers, auto-starting on app open (with a permission prompt on first launch) would reduce friction. Requires careful handling of iOS AudioContext policy and battery implications.
+
+**Message length limit review**
+The 280 character cap was chosen for reasonable transmission time (~10s worst case). In the tannoy use case, messages are likely much shorter (10–50 chars for coded messages). Consider a configurable limit or a "quick mode" with a tighter cap and faster transmission.

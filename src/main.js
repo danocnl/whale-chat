@@ -86,6 +86,15 @@ function renderNav() {
     nav.appendChild(btn);
   }
 
+  // Templates — desktop sidebar only, disabled until implemented
+  const templates = document.createElement('div');
+  templates.className = 'nav-section-disabled';
+  templates.innerHTML = `
+    <div class="nav-section-label">Templates</div>
+    <div class="nav-section-coming">Coming soon</div>
+  `;
+  nav.appendChild(templates);
+
   return nav;
 }
 

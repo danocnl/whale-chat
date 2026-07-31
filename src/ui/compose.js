@@ -1,5 +1,6 @@
 import { validateMessage, transmit, estimateDuration } from '../audio/encoder.js';
 import { getContacts } from '../storage/store.js';
+import { voiceSupported, showVoiceInput } from './voice-input.js';
 
 const MAX = 280;
 
@@ -14,7 +15,20 @@ export function renderCompose(navigate) {
     <div class="screen-body">
       <div class="compose-area">
         <div>
-          <textarea id="msg-input" rows="5" placeholder="Type a message…" maxlength="${MAX}"></textarea>
+          <div class="textarea-wrap">
+            <textarea id="msg-input" rows="5" placeholder="Type a message…" maxlength="${MAX}"
+              style="${voiceSupported ? 'padding-right:44px' : ''}"></textarea>
+            ${voiceSupported ? `
+              <button class="btn-voice-float" id="btn-voice" title="Voice input">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                  <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                  <line x1="12" y1="19" x2="12" y2="23"/>
+                  <line x1="8" y1="23" x2="16" y2="23"/>
+                </svg>
+              </button>
+            ` : ''}
+          </div>
           <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
             <div class="error-msg" id="error-msg"></div>
             <div class="char-count" id="char-count">0 / ${MAX}</div>
@@ -165,6 +179,14 @@ export function renderCompose(navigate) {
       sendArea.style.display    = '';
       sendProgress.style.display = 'none';
     }
+  });
+
+  // ── Voice input ──────────────────────────────────────────
+  el.querySelector('#btn-voice')?.addEventListener('click', () => {
+    showVoiceInput(text => {
+      input.value = text;
+      update();
+    });
   });
 
   update();

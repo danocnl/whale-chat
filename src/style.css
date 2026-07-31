@@ -225,6 +225,41 @@ textarea:focus, input:focus { border-color: var(--accent); }
 .btn-ghost    { background: var(--surface); color: var(--text); border: 1.5px solid var(--border); }
 .btn-full     { width: 100%; border-radius: var(--radius); }
 
+/* ── Sidebar disabled section ────────────────────────────── */
+.nav-section-disabled {
+  display: none;
+}
+
+@media (min-width: 640px) {
+  .nav-section-disabled {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 16px;
+    padding: 12px 14px;
+    border-top: 1px solid var(--border);
+    margin-left: -10px;
+    margin-right: -10px;
+    opacity: 0.45;
+    cursor: not-allowed;
+    user-select: none;
+  }
+
+  .nav-section-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  .nav-section-coming {
+    font-size: 11px;
+    color: var(--muted);
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+}
+
 /* ── Listen toggle (Messages header) ─────────────────────── */
 .listen-toggle-header {
   display: flex;
@@ -320,6 +355,26 @@ textarea:focus, input:focus { border-color: var(--accent); }
 
 /* ── Compose screen ───────────────────────────────────────── */
 .compose-area { display: flex; flex-direction: column; gap: 12px; }
+
+.textarea-wrap { position: relative; }
+
+.btn-voice-float {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--bg);
+  border: 1.5px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.btn-voice-float:hover { border-color: var(--accent); color: var(--accent); }
 
 .char-count {
   text-align: right;
@@ -541,6 +596,90 @@ textarea:focus, input:focus { border-color: var(--accent); }
 
 .confirm-sheet { gap: 20px; }
 .confirm-message { font-size: 16px; line-height: 1.5; text-align: center; }
+
+/* ── Voice input modal ───────────────────────────────────── */
+.voice-sheet { gap: 14px; }
+
+.voice-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  text-align: center;
+}
+
+.voice-heading {
+  font-size: 20px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.voice-interim {
+  font-size: 15px;
+  color: var(--muted);
+  font-style: italic;
+  text-align: center;
+  min-height: 22px;
+}
+
+.voice-indicator {
+  display: flex;
+  justify-content: center;
+  padding: 4px 0;
+}
+
+.voice-dot {
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  background: var(--reject);
+  animation: voice-pulse 1s ease-in-out infinite;
+}
+
+@keyframes voice-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50%       { transform: scale(1.4); opacity: 0.6; }
+}
+
+.voice-result {
+  font-size: 16px;
+  line-height: 1.5;
+  text-align: center;
+  padding: 12px 16px;
+  background: var(--surface);
+  border-radius: var(--radius);
+}
+
+.voice-match-icon {
+  font-size: 36px;
+  text-align: center;
+  color: var(--accept);
+}
+
+.voice-mismatch {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.voice-mismatch-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: var(--surface);
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.vm-n {
+  font-weight: 700;
+  color: var(--muted);
+  font-size: 12px;
+  flex-shrink: 0;
+  padding-top: 2px;
+}
 
 .modal-title { font-size: 13px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
 
