@@ -181,10 +181,19 @@ async function playFrame(dataBits) {
   const ctx = getCtx();
   await ctx.resume(); // required after user gesture on iOS/Android
 
-  // Signal chain: osc → gain (0.5 each) → masterGain → speakers
+  // Signal chain: osc → gain → compressor → masterGain → speakers
+  // Compressor boosts average level without clipping peaks
+  const compressor = ctx.createDynamicsCompressor();
+  compressor.threshold.value = -18;
+  compressor.knee.value      = 6;
+  compressor.ratio.value     = 8;
+  compressor.attack.value    = 0.002;
+  compressor.release.value   = 0.1;
+  compressor.connect(ctx.destination);
+
   const master = ctx.createGain();
-  master.gain.value = 1.0; // maximise output power
-  master.connect(ctx.destination);
+  master.gain.value = 1.0;
+  master.connect(compressor);
 
   const osc1 = ctx.createOscillator();
   const osc2 = ctx.createOscillator();
