@@ -72,28 +72,20 @@ function renderNav() {
   nav.appendChild(brand);
 
   const tabs = [
-    { id: 'history',  label: 'Messages', icon: navIconMessages() },
-    { id: 'compose',  label: 'Send',     icon: navIconSend()     },
-    { id: 'contacts', label: 'Contacts', icon: navIconContacts() },
-    { id: 'profile',  label: 'Profile',  icon: navIconProfile()  },
+    { id: 'history',   label: 'Messages',  icon: navIconMessages(),  disabled: false },
+    { id: 'compose',   label: 'Send',      icon: navIconSend(),      disabled: false },
+    { id: 'contacts',  label: 'Contacts',  icon: navIconContacts(),  disabled: false },
+    { id: 'templates', label: 'Templates', icon: navIconTemplates(), disabled: true  },
+    { id: 'profile',   label: 'Profile',   icon: navIconProfile(),   disabled: false },
   ];
 
   for (const tab of tabs) {
     const btn = document.createElement('button');
-    btn.className = `nav-btn${currentScreen === tab.id ? ' active' : ''}`;
+    btn.className = `nav-btn${currentScreen === tab.id ? ' active' : ''}${tab.disabled ? ' disabled' : ''}`;
     btn.innerHTML = `${tab.icon}<span>${tab.label}</span>`;
-    btn.addEventListener('click', () => navigate(tab.id));
+    if (!tab.disabled) btn.addEventListener('click', () => navigate(tab.id));
     nav.appendChild(btn);
   }
-
-  // Templates — desktop sidebar only, disabled until implemented
-  const templates = document.createElement('div');
-  templates.className = 'nav-section-disabled';
-  templates.innerHTML = `
-    <div class="nav-section-label">Templates</div>
-    <div class="nav-section-coming">Coming soon</div>
-  `;
-  nav.appendChild(templates);
 
   return nav;
 }
@@ -110,6 +102,9 @@ function navIconContacts() {
 }
 function navIconProfile() {
   return `<svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`;
+}
+function navIconTemplates() {
+  return `<svg viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>`;
 }
 function navIconMic() {
   return `<svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>`;

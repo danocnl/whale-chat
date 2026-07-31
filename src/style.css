@@ -225,39 +225,10 @@ textarea:focus, input:focus { border-color: var(--accent); }
 .btn-ghost    { background: var(--surface); color: var(--text); border: 1.5px solid var(--border); }
 .btn-full     { width: 100%; border-radius: var(--radius); }
 
-/* ── Sidebar disabled section ────────────────────────────── */
-.nav-section-disabled {
-  display: none;
-}
-
-@media (min-width: 640px) {
-  .nav-section-disabled {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    margin-top: 16px;
-    padding: 12px 14px;
-    border-top: 1px solid var(--border);
-    margin-left: -10px;
-    margin-right: -10px;
-    opacity: 0.45;
-    cursor: not-allowed;
-    user-select: none;
-  }
-
-  .nav-section-label {
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--text);
-  }
-
-  .nav-section-coming {
-    font-size: 11px;
-    color: var(--muted);
-    font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-  }
+/* ── Disabled nav item ───────────────────────────────────── */
+.nav-btn.disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
 }
 
 /* ── Listen toggle (Messages header) ─────────────────────── */
