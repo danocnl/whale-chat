@@ -167,6 +167,32 @@ export function encodedBitLength(text) {
 }
 
 /**
+ * Decode exactly charCount characters from a bit array, returning both the
+ * decoded text and the number of bits consumed. Used by the decoder to locate
+ * the CRC-16 that follows each payload copy without knowing the bit length upfront.
+ *
+ * @param {number[]} bits
+ * @param {number} charCount
+ * @returns {{ text: string, bitsConsumed: number }}
+ */
+export function decodeWithLength(bits, charCount) {
+  const chars = [];
+  let node = TREE;
+  let i = 0;
+
+  for (; i < bits.length && chars.length < charCount; i++) {
+    node = bits[i] === 0 ? node.left : node.right;
+    if (!node) throw new Error('Invalid Huffman bit sequence — possible corruption');
+    if (node.char !== null) {
+      chars.push(node.char);
+      node = TREE;
+    }
+  }
+
+  return { text: chars.join(''), bitsConsumed: i };
+}
+
+/**
  * Return the code table sorted by code length — useful for debugging.
  * @returns {Array<{ char: string, bits: number, code: string }>}
  */

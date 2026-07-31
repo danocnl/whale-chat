@@ -54,22 +54,20 @@
 
 ### Phase 2 — RX Audio Engine
 
-> ⚠️ This is the highest-risk phase. Most development time will be spent here.
+- [x] `getUserMedia` with critical constraints (AGC, noise suppression, echo cancellation all disabled — see SPEC.md)
+- [x] `AnalyserNode` + FFT loop running continuously while app is in foreground
+- [x] WAKE signal detection (sustained energy at ~17 kHz and ~19 kHz)
+- [x] APP\_SIG verification (discard frame if constant does not match)
+- [x] Symbol boundary lock via SYNC sequence
+- [x] Per-symbol tone identification — which of 8 tones per sub-band each 20ms window
+- [x] Full frame parsing pipeline (all header fields)
+- [x] RECIPIENT\_UUID check — silently discard if directed to another device
+- [x] Buffer full audio from WAKE; decode payload only on user accept (Option B)
+- [x] Huffman decompression pipeline (bit stream → text)
+- [x] CRC-16 verification per payload copy
+- [x] Dual-copy comparison and majority voting on mismatch
 
-- [ ] `getUserMedia` with critical constraints (AGC, noise suppression, echo cancellation all disabled — see SPEC.md)
-- [ ] `AnalyserNode` + FFT loop running continuously while app is in foreground
-- [ ] WAKE signal detection (sustained energy at ~17 kHz and ~19 kHz)
-- [ ] APP\_SIG verification (discard frame if constant does not match)
-- [ ] Symbol boundary lock via SYNC sequence
-- [ ] Per-symbol tone identification — which of 8 tones per sub-band each 20ms window
-- [ ] Full frame parsing pipeline (all header fields)
-- [ ] RECIPIENT\_UUID check — silently discard if directed to another device
-- [ ] Buffer full audio from WAKE; decode payload only on user accept (Option B)
-- [ ] Huffman decompression pipeline (bit stream → text)
-- [ ] CRC-16 verification per payload copy
-- [ ] Dual-copy comparison and majority voting on mismatch
-
-> **Notes:** —
+> **Notes:** Pure functions (identifyToneIndex, isWakePresent, symbolsToBits, bitsToNum, parseHeader, decodePayload) fully tested with synthetic FFT data — 98 tests passing. State machine: IDLE → WAKING (≥400ms sustained WAKE tones) → RECEIVING (accumulate symbols) → IDLE (END tones trigger frame processing). `smoothingTimeConstant = 0` on AnalyserNode for instantaneous FFT values. Drift-corrected 20ms loop via requestAnimationFrame. decodePayload handles clean / recovered (one copy bad) / corrupted (both bad, majority vote) cases. decodeWithLength added to huffman.js — returns bitsConsumed so decoder can locate copy 2 without knowing payload bit length upfront. 2 remaining todos: live mic tests (browser only). Phase 2 complete.
 
 ---
 
