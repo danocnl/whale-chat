@@ -23,7 +23,7 @@ const SAMPLE_RATE   = 44100;
 // 4096 (93ms) contaminated the spectrum with 4-5 previous symbols,
 // making tone identification unreliable.
 const FFT_SIZE      = 1024;
-const SYMBOL_MS     = 40; // must match encoder SYMBOL_S × 1000
+const SYMBOL_MS     = 80; // must match encoder SYMBOL_S × 1000
 
 // 4-FSK: 4 tones per sub-band, 500 Hz spacing — must match encoder exactly
 const LOW_FREQS  = [10000, 10500, 11000, 11500];
@@ -48,7 +48,7 @@ const WAKE_HIGH_BIN = freqToBin(WAKE_HIGH);
 const SIGNAL_DB = -70;
 
 // WAKE must be sustained for at least this many ticks (20ms each) = 400ms
-const WAKE_MIN_TICKS = 10; // 10 × 40ms = 400ms — WAKE is 500ms = 12.5 ticks, so 10 is safely within
+const WAKE_MIN_TICKS = 5;  // 5 × 80ms = 400ms — WAKE is 500ms = 6.25 ticks at 80ms each
 
 // Maximum data symbols to buffer before declaring a frame invalid
 // 4-FSK: 4 bits/symbol. 1200 × 4 = 4800 bits — enough for 2 × max payload + overhead
@@ -321,9 +321,9 @@ export async function startListening(onIncoming) {
 
   // After transitioning to RECEIVING, ignore all tones for this many ticks (300ms).
   // Ensures the WAKE tail has fully decayed before we start collecting or detecting END.
-  const BLACKOUT_TICKS = 3; // 3 × 40ms = 120ms — covers WAKE tail decay
+  const BLACKOUT_TICKS = 2; // 2 × 80ms = 160ms — covers WAKE tail decay
 
-  const END_MIN_TICKS  = 4;  // 4 × 40ms = 160ms sustained WAKE — END signal is 300ms
+  const END_MIN_TICKS  = 3;  // 3 × 80ms = 240ms sustained WAKE — END signal is 300ms
 
   function wakePresent() {
     return fftData[actualWakeLowBin] > SIGNAL_DB &&

@@ -56,9 +56,9 @@ describe('validateMessage', () => {
 // estimateDuration
 // ---------------------------------------------------------------------------
 describe('estimateDuration', () => {
-  it('short messages complete in under 6 seconds', () => {
-    // 40ms symbols + 3× APP_SIG preamble — overhead is ~2.6s before payload
-    expect(estimateDuration('Hi!')).toBeLessThan(6000);
+  it('short messages complete in under 12 seconds', () => {
+    // 80ms symbols + 3× APP_SIG preamble — overhead dominates for short messages
+    expect(estimateDuration('Hi!')).toBeLessThan(12000);
   });
 
   it('longer messages take proportionally more time', () => {
@@ -67,7 +67,7 @@ describe('estimateDuration', () => {
     expect(long).toBeGreaterThan(short);
   });
 
-  it('280-char message is under 35 seconds', () => {
+  it('280-char message is under 55 seconds', () => {
     // 40ms symbols significantly increases transmission time
     expect(estimateDuration('a'.repeat(280))).toBeLessThan(30000);
   });

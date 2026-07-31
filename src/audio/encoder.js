@@ -19,8 +19,8 @@ import { getShortUUID } from '../storage/store.js';
 // ---------------------------------------------------------------------------
 
 const SAMPLE_RATE       = 44100;
-const SYMBOL_S          = 0.040; // 40ms per symbol — 1024 FFT window (23ms) covers ~57% of
-                                  // one symbol, vs 115% at 20ms, greatly reducing inter-symbol contamination
+const SYMBOL_S          = 0.080; // 80ms per symbol — 1024 FFT window (23ms) covers only 29%
+                                  // of one symbol, giving much cleaner tone identification
 const WAKE_S            = 0.500; // 500ms sustained tones
 const END_S             = 0.300; // 300ms sustained tones
 const SCHEDULE_OFFSET_S = 0.050; // 50ms ahead of current time for scheduling
