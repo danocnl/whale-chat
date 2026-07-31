@@ -137,8 +137,9 @@ export function estimateDuration(text) {
 /**
  * Build the complete data bit stream for the frame.
  * WAKE and END tones are handled separately in playFrame().
+ * Exported for testing.
  */
-function assembleFrame(text, recipientUUID) {
+export function assembleFrame(text, recipientUUID = null) {
   const payloadBits   = huffmanEncode(text);
   const crcBits       = toBits(crc16(payloadBits), 16);
   const senderBits    = toBits(parseInt(getShortUUID(), 16), 32);
@@ -230,8 +231,9 @@ function toBits(n, width) {
  * Convert a flat bit array into dual-band symbol pairs.
  * Every 6 bits → one symbol: first 3 bits = low band index, next 3 = high band index.
  * Pads with zeros to the nearest multiple of 6.
+ * Exported for testing.
  */
-function toSymbols(bits) {
+export function toSymbols(bits) {
   const padded = [...bits];
   while (padded.length % 6 !== 0) padded.push(0);
 

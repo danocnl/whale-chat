@@ -14,6 +14,16 @@
 
 ---
 
+## Testing
+
+- `npm test` — run full suite (Vitest, happy-dom environment)
+- `npm run test:watch` — watch mode during development
+- Test files live alongside source as `*.test.js`
+- All commits must pass `npm test` before pushing
+- Phase 2 decoder tests written TDD-style ahead of implementation (`it.todo`)
+
+---
+
 ## Must Haves — Proves the concept works
 
 ### Phase 0 — Foundation
