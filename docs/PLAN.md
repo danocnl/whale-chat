@@ -85,12 +85,17 @@
 
 ### Phase 4 — Core UI
 
-- [ ] Compose screen — text input, live character count, validation, send button
-- [ ] Incoming prompt — sender UUID/nickname, accept/reject actions
-- [ ] Message history — received messages, sender, timestamp, CRC status
-- [ ] Profile screen — my UUID displayed large, copy to clipboard button
+- [x] Compose screen — text input, live character count, validation, send button, broadcast/directed toggle, progress bar
+- [x] Incoming prompt — sender UUID/nickname, accept/reject, decode on accept, tap-backdrop to dismiss
+- [x] Message history — threaded by sender, expand to conversation, delete thread or individual message, directed badge
+- [x] Profile screen — UUID display, one-tap copy
+- [x] Contacts screen — add/edit/delete UUID→nickname, styled like Messages
+- [x] Responsive layout — bottom nav (mobile) / sidebar (desktop ≥640px)
+- [x] Listen toggle — manual mic start/stop in Messages header, persists across nav
+- [x] Custom confirm modal — replaces browser prompt for destructive actions
+- [x] Welcome message on first launch
 
-> **Notes:** —
+> **Notes:** Directed mode UI (Phase 5) already implemented in the compose screen. Contacts/nickname resolution (Phase 6) also complete. Both folded into Phase 4 during UI build.
 
 ---
 
