@@ -217,23 +217,30 @@ export function decodePayload(rawFrameBits) {
     offset += bitsConsumed + 16;
   }
 
+  let result;
+
   // Both copies clean
   if (copies.every(c => c.crcValid)) {
-    return { text: copies[0].text, crcStatus: 'clean' };
+    result = { text: copies[0].text, crcStatus: 'clean' };
+  } else {
+    // One copy clean
+    const clean = copies.find(c => c.crcValid);
+    if (clean) {
+      result = { text: clean.text, crcStatus: 'recovered' };
+    } else {
+      // Both corrupted — majority-bit vote on raw payload bits, attempt decode
+      const voted = majorityVote(copies.map(c => c.rawBits));
+      try {
+        const { text } = decodeWithLength(voted, charCount);
+        result = { text, crcStatus: 'corrupted' };
+      } catch {
+        result = { text: copies[0]?.text ?? '', crcStatus: 'corrupted' };
+      }
+    }
   }
 
-  // One copy clean
-  const clean = copies.find(c => c.crcValid);
-  if (clean) return { text: clean.text, crcStatus: 'recovered' };
-
-  // Both corrupted — majority-bit vote on raw payload bits, attempt decode
-  const voted = majorityVote(copies.map(c => c.rawBits));
-  try {
-    const { text } = decodeWithLength(voted, charCount);
-    return { text, crcStatus: 'corrupted' };
-  } catch {
-    return { text: copies[0]?.text ?? '', crcStatus: 'corrupted' };
-  }
+  console.log('[decoder] received (' + result.crcStatus + '):', JSON.stringify(result.text));
+  return result;
 }
 
 // ---------------------------------------------------------------------------

@@ -109,6 +109,7 @@ export async function transmit(text, recipientUUID = null) {
   if (isTransmitting) throw new Error('Already transmitting — wait for current message to finish');
 
   isTransmitting = true;
+  console.log('[encoder] sending:', JSON.stringify(text));
   try {
     const dataBits = assembleFrame(text, recipientUUID);
     await playFrame(dataBits);
