@@ -1,4 +1,4 @@
-import { getOrCreateUUID } from './storage/store.js';
+import { getOrCreateUUID, addToHistory, saveContact } from './storage/store.js';
 import { startListening } from './audio/decoder.js';
 import { renderCompose }  from './ui/compose.js';
 import { renderHistory }  from './ui/history.js';
@@ -117,14 +117,12 @@ renderApp();
 
 function initWelcome() {
   if (localStorage.getItem('whale_welcomed')) return;
-  import('./storage/store.js').then(({ addToHistory, saveContact }) => {
-    saveContact('whalecht', 'Whale Chat');
-    addToHistory({
-      sender:    'whalecht',
-      content:   'Welcome to Whale Chat!\n\nSend and receive short text messages with people nearby using audio. No internet, no Bluetooth, no pairing required.',
-      mode:      'broadcast',
-      crcStatus: 'clean',
-    });
-    localStorage.setItem('whale_welcomed', '1');
+  saveContact('whalecht', 'Whale Chat');
+  addToHistory({
+    sender:    'whalecht',
+    content:   'Welcome to Whale Chat!\n\nSend and receive short text messages with people nearby using audio. No internet, no Bluetooth, no pairing required.',
+    mode:      'broadcast',
+    crcStatus: 'clean',
   });
+  localStorage.setItem('whale_welcomed', '1');
 }
