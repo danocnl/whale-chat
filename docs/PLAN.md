@@ -18,13 +18,13 @@
 
 ### Phase 0 — Foundation
 
-- [ ] Confirm and scaffold tech stack (React + Vite + TypeScript proposed)
-- [ ] UUID v4 generation on first launch, persisted to `localStorage`
-- [ ] Local storage layer — schema for UUID, history, contacts
-- [ ] CRC-16 utility (encode + verify)
+- [x] Confirm and scaffold tech stack — Vanilla JS + Vite (no framework)
+- [x] UUID v4 generation on first launch, persisted to `localStorage`
+- [x] Local storage layer — schema for UUID, history, contacts
+- [x] CRC-16 utility (encode + verify)
 - [ ] Static Huffman table (English-tuned, ~79 char set, encode + decode)
 
-> **Notes:** —
+> **Notes:** Scaffolded manually (not via `npm create vite`) to preserve `docs/`. Build verified clean — 12 modules, 107ms. CRC-16/CCITT-FALSE implemented. UUID + storage layer complete. Huffman table is the remaining Phase 0 task.
 
 ---
 
