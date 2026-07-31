@@ -14,10 +14,22 @@ export function renderCompose(navigate) {
     </div>
     <div class="screen-body">
       <div class="compose-area">
+        <div class="mode-toggle">
+          <button id="btn-broadcast" class="active">Broadcast</button>
+          <button id="btn-directed">Directed</button>
+        </div>
+
+        <div id="recipient-row" style="display:none">
+          <input id="recipient-input" type="text" placeholder="Recipient UUID (8 hex chars)"
+            maxlength="8" spellcheck="false" autocomplete="off" />
+          <div id="recipient-hint" style="font-size:13px;color:var(--muted);margin-top:6px"></div>
+        </div>
+
         <div>
           <div class="textarea-wrap">
             <textarea id="msg-input" rows="5" placeholder="Type a message…" maxlength="${MAX}"
-              style="${voiceSupported ? 'padding-right:44px' : ''}"></textarea>
+              style="padding-bottom:32px"></textarea>
+            <div class="char-count-float" id="char-count">0 / ${MAX}</div>
             ${voiceSupported ? `
               <button class="btn-voice-float" id="btn-voice" title="Voice input">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -29,21 +41,7 @@ export function renderCompose(navigate) {
               </button>
             ` : ''}
           </div>
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px">
-            <div class="error-msg" id="error-msg"></div>
-            <div class="char-count" id="char-count">0 / ${MAX}</div>
-          </div>
-        </div>
-
-        <div class="mode-toggle">
-          <button id="btn-broadcast" class="active">Broadcast</button>
-          <button id="btn-directed">Directed</button>
-        </div>
-
-        <div id="recipient-row" style="display:none">
-          <input id="recipient-input" type="text" placeholder="Recipient UUID (8 hex chars)"
-            maxlength="8" spellcheck="false" autocomplete="off" />
-          <div id="recipient-hint" style="font-size:13px;color:var(--muted);margin-top:6px"></div>
+          <div class="error-msg" id="error-msg"></div>
         </div>
 
         <div class="duration-hint" id="duration-hint"></div>

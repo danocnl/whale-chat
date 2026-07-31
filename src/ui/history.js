@@ -161,7 +161,6 @@ function threadItem({ sender, messages }) {
       <div class="thread-body">
         <div class="thread-header-row">
           <span class="thread-name">${escHtml(name)}</span>
-          <span class="thread-ts">${ts}</span>
         </div>
         <div class="thread-preview">${escHtml(preview)}</div>
         <div class="thread-meta">
@@ -171,6 +170,7 @@ function threadItem({ sender, messages }) {
         </div>
       </div>
       <div class="thread-actions">
+        <span class="thread-ts">${ts}</span>
         <button class="btn-delete-thread" data-sender="${sender}" title="Delete thread">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/>
