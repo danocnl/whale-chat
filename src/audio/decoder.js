@@ -19,13 +19,17 @@ import { getShortUUID } from '../storage/store.js';
 // ---------------------------------------------------------------------------
 
 const SAMPLE_RATE   = 44100;
-const FFT_SIZE      = 4096;
+// 1024-sample FFT = 23ms window ≈ 1 symbol period (20ms).
+// 4096 (93ms) contaminated the spectrum with 4-5 previous symbols,
+// making tone identification unreliable.
+const FFT_SIZE      = 1024;
 const SYMBOL_MS     = 20;
 
 const LOW_FREQS  = [16000, 16250, 16500, 16750, 17000, 17250, 17500, 17750];
 const HIGH_FREQS = [18000, 18250, 18500, 18750, 19000, 19250, 19500, 19750];
-const WAKE_LOW   = 17000;
-const WAKE_HIGH  = 19000;
+// Must match encoder exactly — see encoder.js for rationale
+const WAKE_LOW   = 15500; // 500 Hz below data band
+const WAKE_HIGH  = 20000; // 250 Hz above data band
 const APP_SIG    = 0xA3D7F1;
 const BROADCAST  = 0xFFFFFFFF;
 
@@ -36,8 +40,11 @@ const HIGH_BINS     = HIGH_FREQS.map(freqToBin);
 const WAKE_LOW_BIN  = freqToBin(WAKE_LOW);
 const WAKE_HIGH_BIN = freqToBin(WAKE_HIGH);
 
-// Signal must be above this threshold to count as "present" (dBFS)
-const SIGNAL_DB = -50;
+// Signal threshold (dBFS). Chosen to sit cleanly between:
+//   - Actual WAKE/END signal: -39 to -72 dBFS  → above threshold ✓
+//   - FFT leakage from nearby data tones: -96 to -110 dBFS → below threshold ✓
+//   - Noise floor: -145 to -170 dBFS → well below threshold ✓
+const SIGNAL_DB = -85;
 
 // WAKE must be sustained for at least this many ticks (20ms each) = 400ms
 const WAKE_MIN_TICKS = 20;
@@ -46,7 +53,9 @@ const WAKE_MIN_TICKS = 20;
 // 700 symbols × 6 bits = 4200 bits — enough for 2 × max payload + overhead
 const MAX_FRAME_SYMBOLS = 700;
 
-// Frame bit offsets (from start of buffer = start of APP_SIG)
+// Frame bit offsets — relative to the ALIGNED frame start (last APP_SIG copy).
+// After alignment, the structure is identical to the single-copy case:
+//   APP_SIG(24) → SYNC(18) → SENDER(32) → RECIPIENT(32) → COPIES(8) → LENGTH(16) → DATA
 const OFF = {
   APP_SIG_START:   0,
   APP_SIG_END:     24,
@@ -60,7 +69,7 @@ const OFF = {
   COPIES_END:      114,
   LENGTH_START:    114,
   LENGTH_END:      130,
-  DATA_START:      130,  // where payload copies begin
+  DATA_START:      130,  // relative to aligned (sliced) frame
 };
 
 // ---------------------------------------------------------------------------
@@ -130,20 +139,42 @@ export function bitsToNum(bits, start, len) {
 }
 
 /**
- * Parse all header fields from the frame bit buffer.
- * Buffer starts at APP_SIG (WAKE tones are not included).
+ * Find the last occurrence of APP_SIG in the first ~96 bits of a frame buffer.
+ * APP_SIG is transmitted 3× so the decoder can align even if early copies are missed.
+ * Returns the bit offset of the last match, or -1 if not found.
+ * Exported for testing.
  *
  * @param {number[]} bits
- * @returns {{ appSig, sender, recipient, numCopies, charCount }}
+ * @returns {number}
+ */
+export function findLastAppSig(bits) {
+  let lastOffset = -1;
+  const limit = Math.min(bits.length - 24, 90); // 3 copies × 24 bits + margin
+  for (let i = 0; i <= limit; i += 6) {  // step by 1 symbol (6 bits)
+    if (bitsToNum(bits, i, 24) === APP_SIG) lastOffset = i;
+  }
+  return lastOffset;
+}
+
+/**
+ * Parse all header fields from the frame bit buffer.
+ * Automatically aligns to the last APP_SIG occurrence in the preamble,
+ * handling timing offsets where the first 1-2 copies may have been missed.
+ *
+ * @param {number[]} bits
+ * @returns {{ appSig, sender, recipient, numCopies, charCount, _offset }}
  */
 export function parseHeader(bits) {
-  const appSig    = bitsToNum(bits, OFF.APP_SIG_START, 24);
-  const sender    = bitsToNum(bits, OFF.SENDER_START, 32)
+  const offset = Math.max(0, findLastAppSig(bits));
+  const b      = offset > 0 ? bits.slice(offset) : bits;
+
+  const appSig    = bitsToNum(b, OFF.APP_SIG_START, 24);
+  const sender    = bitsToNum(b, OFF.SENDER_START, 32)
                       .toString(16).padStart(8, '0');
-  const recipient = bitsToNum(bits, OFF.RECIPIENT_START, 32);
-  const numCopies = bitsToNum(bits, OFF.COPIES_START, 8);
-  const charCount = bitsToNum(bits, OFF.LENGTH_START, 16);
-  return { appSig, sender, recipient, numCopies, charCount };
+  const recipient = bitsToNum(b, OFF.RECIPIENT_START, 32);
+  const numCopies = bitsToNum(b, OFF.COPIES_START, 8);
+  const charCount = bitsToNum(b, OFF.LENGTH_START, 16);
+  return { appSig, sender, recipient, numCopies, charCount, _offset: offset };
 }
 
 /**
@@ -153,8 +184,9 @@ export function parseHeader(bits) {
  * @param {number[]} frameBits - Full frame bit buffer (starting at APP_SIG)
  * @returns {{ text: string, crcStatus: 'clean'|'recovered'|'corrupted' }}
  */
-export function decodePayload(frameBits) {
-  const { numCopies, charCount } = parseHeader(frameBits);
+export function decodePayload(rawFrameBits) {
+  const { numCopies, charCount, _offset } = parseHeader(rawFrameBits);
+  const frameBits = _offset > 0 ? rawFrameBits.slice(_offset) : rawFrameBits;
 
   const copies = [];
   let offset = OFF.DATA_START;
@@ -236,19 +268,56 @@ export async function startListening(onIncoming) {
   const ctx      = new AudioContext({ sampleRate: SAMPLE_RATE });
   const source   = ctx.createMediaStreamSource(stream);
   const analyser = ctx.createAnalyser();
-  analyser.fftSize            = FFT_SIZE;
-  analyser.smoothingTimeConstant = 0; // no smoothing — we want instantaneous values
+  analyser.fftSize               = FFT_SIZE;
+  analyser.smoothingTimeConstant = 0;
   source.connect(analyser);
+
+  // Use the ACTUAL sample rate — device may not honour the requested 44100.
+  // If there's a mismatch our bin indices will target the wrong frequencies.
+  const actualRate = ctx.sampleRate;
+  const bin = f => Math.round(f * FFT_SIZE / actualRate);
+
+  const actualLowBins      = LOW_FREQS.map(bin);
+  const actualHighBins     = HIGH_FREQS.map(bin);
+  const actualWakeLowBin   = bin(WAKE_LOW);
+  const actualWakeHighBin  = bin(WAKE_HIGH);
+
+  console.log('[decoder] started — actual sample rate:', actualRate,
+    '| WAKE bins:', actualWakeLowBin, actualWakeHighBin,
+    '| expected:', freqToBin(WAKE_LOW), freqToBin(WAKE_HIGH));
 
   const fftData = new Float32Array(analyser.frequencyBinCount);
 
-  let state     = 'IDLE';
-  let wakeTicks = 0;
-  let symbols   = [];
+  let state           = 'IDLE';
+  let wakeTicks       = 0;
+  let endTicks        = 0;
+  let blackoutRemaining = 0; // ticks to ignore after WAKING→RECEIVING (lets tail fully decay)
+  let receivingReady  = false;
+  let symbols         = [];
+  let debugTick       = 0;
+
+  // After transitioning to RECEIVING, ignore all tones for this many ticks (300ms).
+  // Ensures the WAKE tail has fully decayed before we start collecting or detecting END.
+  const BLACKOUT_TICKS = 5; // 5 × 20ms = 100ms — just enough to cover the WAKE tail
+
+  const END_MIN_TICKS  = 5;  // 5 × 20ms = 100ms sustained WAKE for END confirmation
+
+  function wakePresent() {
+    return fftData[actualWakeLowBin] > SIGNAL_DB &&
+           fftData[actualWakeHighBin] > SIGNAL_DB;
+  }
 
   function tick() {
     analyser.getFloatFrequencyData(fftData);
-    const wakeNow = isWakePresent(fftData);
+    const wakeNow = wakePresent();
+
+    // Log signal levels at WAKE frequencies every ~200ms for debugging
+    if (++debugTick % 10 === 0) {
+      console.log('[decoder] state:', state,
+        '| WAKE_LOW dB:', fftData[actualWakeLowBin]?.toFixed(1),
+        '| WAKE_HIGH dB:', fftData[actualWakeHighBin]?.toFixed(1),
+        '| threshold:', SIGNAL_DB);
+    }
 
     switch (state) {
       case 'IDLE':
@@ -260,9 +329,12 @@ export async function startListening(onIncoming) {
           wakeTicks++;
         } else {
           if (wakeTicks >= WAKE_MIN_TICKS) {
-            // WAKE confirmed — data is starting
-            state   = 'RECEIVING';
-            symbols = [];
+            // WAKE confirmed — start blackout to let tail decay before collecting
+            state             = 'RECEIVING';
+            blackoutRemaining = BLACKOUT_TICKS;
+            receivingReady    = false;
+            symbols           = [];
+            console.log('[decoder] WAKING→RECEIVING, blackout started', BLACKOUT_TICKS, 'ticks');
           } else {
             // Too short — false positive, ignore
             state     = 'IDLE';
@@ -272,23 +344,47 @@ export async function startListening(onIncoming) {
         break;
 
       case 'RECEIVING': {
-        if (wakeNow) {
-          // END signal detected
-          if (symbols.length >= 24) { // minimum valid frame symbols
-            processFrame(symbolsToBits(symbols));
+        // Blackout: ignore everything for the first BLACKOUT_TICKS after WAKING
+        if (blackoutRemaining > 0) {
+          blackoutRemaining--;
+          if (blackoutRemaining === 0) {
+            console.log('[decoder] blackout ended — now collecting data symbols');
+            receivingReady = true;
           }
-          state     = 'IDLE';
-          wakeTicks = 0;
-          symbols   = [];
+          break;
+        }
+
+        if (wakeNow) {
+          // Potential END signal
+          endTicks++;
+          console.log('[decoder] END tick', endTicks, '/', END_MIN_TICKS,
+            '| symbols so far:', symbols.length);
+          if (endTicks >= END_MIN_TICKS) {
+            console.log('[decoder] END confirmed — symbols collected:', symbols.length);
+            if (symbols.length >= 24) {
+              processFrame(symbolsToBits(symbols));
+            } else {
+              console.log('[decoder] too few symbols, discarding frame');
+            }
+            state             = 'IDLE';
+            wakeTicks         = 0;
+            endTicks          = 0;
+            blackoutRemaining = 0;
+            receivingReady    = false;
+            symbols           = [];
+          }
         } else {
-          const lo = identifyToneIndex(fftData, LOW_BINS);
-          const hi = identifyToneIndex(fftData, HIGH_BINS);
+          endTicks = 0;
+          const lo = identifyToneIndex(fftData, actualLowBins);
+          const hi = identifyToneIndex(fftData, actualHighBins);
           symbols.push({ lo, hi });
 
           if (symbols.length > MAX_FRAME_SYMBOLS) {
-            // Frame too long — corrupted or runaway, abandon
-            state   = 'IDLE';
-            symbols = [];
+            console.log('[decoder] frame too long, abandoning');
+            state             = 'IDLE';
+            blackoutRemaining = 0;
+            receivingReady    = false;
+            symbols           = [];
           }
         }
         break;
@@ -298,8 +394,14 @@ export async function startListening(onIncoming) {
 
   function processFrame(frameBits) {
     const header = parseHeader(frameBits);
+    console.log('[decoder] processFrame — appSig:', header.appSig.toString(16),
+      'expected:', APP_SIG.toString(16), 'alignOffset:', header._offset,
+      'sender:', header.sender, 'charCount:', header.charCount);
 
-    if (header.appSig !== APP_SIG) return; // not our protocol
+    if (header.appSig !== APP_SIG) {
+      console.log('[decoder] APP_SIG mismatch — tone decode error or frame too corrupted');
+      return;
+    }
 
     const myUUID      = getShortUUID();
     const recipientHex = header.recipient.toString(16).padStart(8, '0');

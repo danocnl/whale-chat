@@ -28,8 +28,12 @@ const SCHEDULE_OFFSET_S = 0.050; // 50ms ahead of current time for scheduling
 const LOW_FREQS  = [16000, 16250, 16500, 16750, 17000, 17250, 17500, 17750];
 const HIGH_FREQS = [18000, 18250, 18500, 18750, 19000, 19250, 19500, 19750];
 
-const WAKE_LOW  = 17000; // centre of low sub-band  (for WAKE + END signals)
-const WAKE_HIGH = 19000; // centre of high sub-band
+// WAKE frequencies sit OUTSIDE the 8-FSK data bands entirely.
+// This eliminates both data-symbol collisions AND FFT sidelobe leakage
+// from adjacent data tones, preventing false WAKE/END triggers.
+// Low data band: 16000-17750 Hz  |  High data band: 18000-19750 Hz
+const WAKE_LOW  = 15500; // 500 Hz below data band floor
+const WAKE_HIGH = 20000; // 250 Hz above data band ceiling
 
 // Protocol fixed values
 const APP_SIG    = 0xA3D7F1;   // 24-bit app fingerprint — see SPEC.md
@@ -37,7 +41,10 @@ const BROADCAST  = 0xFFFFFFFF; // RECIPIENT_UUID for broadcast mode
 const NUM_COPIES = 2;          // payload transmitted twice for redundancy
 
 // Pre-computed constant bit sequences (computed once at module load)
+// APP_SIG is repeated 3× so the decoder can find it even if the first
+// 1-2 copies are missed due to WAKE signal decay timing.
 const APP_SIG_BITS    = toBits(APP_SIG, 24);
+const APP_SIG_REPEATED = [...APP_SIG_BITS, ...APP_SIG_BITS, ...APP_SIG_BITS]; // 72 bits
 const BROADCAST_BITS  = new Array(32).fill(1);
 const NUM_COPIES_BITS = toBits(NUM_COPIES, 8);
 
@@ -149,7 +156,7 @@ export function assembleFrame(text, recipientUUID = null) {
   const lengthBits    = toBits(text.length, 16);
 
   return [
-    ...APP_SIG_BITS,
+    ...APP_SIG_REPEATED,
     ...SYNC_BITS,
     ...senderBits,
     ...recipientBits,

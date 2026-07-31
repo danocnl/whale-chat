@@ -73,13 +73,19 @@
 
 ### Phase 3 — Integration & Testing
 
-- [ ] Loopback test on single device (speaker → mic, same phone)
+- [x] Loopback test on single device (speaker → mic, same phone)
 - [ ] Two-device test (basic broadcast, short message)
-- [ ] Validate full round-trip: text in → audio → text out
+- [x] Validate full round-trip: text in → audio → text out
 - [ ] Test at range (across a room, ~3–5m)
 - [ ] Confirm AGC/NS/EC constraints are working correctly (spectrogram check)
 
-> **Notes:** —
+> **Notes:** Full round-trip confirmed working on a single device (loopback). Key findings from debugging:
+> - FFT window must be 1024 samples (23ms ≈ 1 symbol) — 4096 (93ms) caused 4-5 symbols to contaminate each frame, making tone ID unreliable
+> - WAKE frequencies must be outside the 8-FSK data bands (15500 Hz / 20000 Hz) — in-band frequencies caused false END triggers via FFT sidelobe leakage
+> - Detection threshold: -85 dBFS — sits cleanly between actual WAKE signal (-40 to -65 dBFS) and data leakage (-96 to -110 dBFS)
+> - WAKE_MIN_TICKS = 20 (400ms) causes WAKING→RECEIVING to fire while WAKE tail is still decaying; 5-tick blackout (100ms) covers the tail
+> - APP_SIG transmitted 3× in preamble; decoder searches for last occurrence — handles up to 2 missed copies due to timing offset
+> - Room acoustics matter significantly: echoey rooms cause inter-symbol interference from reflections; quieter rooms required for reliable decoding
 
 ---
 

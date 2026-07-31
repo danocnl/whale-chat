@@ -107,10 +107,9 @@ describe('assembleFrame', () => {
   });
 
   it('broadcast frame has 32 bits of 1s for RECIPIENT_UUID', () => {
-    // Broadcast = 0xFFFFFFFF = 32 ones
+    // APP_SIG×3 = 72 bits, SYNC = 18 bits, SENDER_UUID = 32 bits → RECIPIENT at 122
     const frame = assembleFrame('hi');
-    // RECIPIENT_UUID starts at bit 24 (APP_SIG) + 18 (SYNC) + 32 (SENDER_UUID) = 74
-    const recipientBits = frame.slice(74, 106);
+    const recipientBits = frame.slice(122, 154);
     expect(recipientBits).toEqual(new Array(32).fill(1));
   });
 });

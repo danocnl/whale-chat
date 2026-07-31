@@ -17,12 +17,15 @@ async function toggleListening() {
     stopListening?.();
     stopListening = null;
     isListening   = false;
+    console.log('[listen] stopped');
   } else {
+    console.log('[listen] starting…');
     try {
       stopListening = await startListening(onIncoming);
       isListening   = true;
+      console.log('[listen] active — mic open, waiting for WAKE signal');
     } catch (err) {
-      console.warn('Could not start listener:', err.message);
+      console.error('[listen] failed to start:', err.message);
       return;
     }
   }

@@ -29,7 +29,7 @@ vi.stubGlobal('AudioContext', vi.fn(() => ({
 // ---------------------------------------------------------------------------
 // Test helper — synthetic FFT data with peaks at specific frequencies
 // ---------------------------------------------------------------------------
-const FFT_SIZE   = 4096;
+const FFT_SIZE   = 1024;
 const SAMPLE_RATE = 44100;
 const freqToBin  = f => Math.round(f * FFT_SIZE / SAMPLE_RATE);
 
@@ -94,16 +94,16 @@ describe('identifyToneIndex', () => {
 // isWakePresent
 // ---------------------------------------------------------------------------
 describe('isWakePresent', () => {
-  it('returns true when both WAKE frequencies (17kHz + 19kHz) are active', () => {
-    expect(isWakePresent(syntheticFFT([17000, 19000]))).toBe(true);
+  it('returns true when both WAKE frequencies (15.5kHz + 20kHz) are active', () => {
+    expect(isWakePresent(syntheticFFT([15500, 20000]))).toBe(true);
   });
 
   it('returns false when only the low WAKE frequency is active', () => {
-    expect(isWakePresent(syntheticFFT([17000]))).toBe(false);
+    expect(isWakePresent(syntheticFFT([15500]))).toBe(false);
   });
 
   it('returns false when only the high WAKE frequency is active', () => {
-    expect(isWakePresent(syntheticFFT([19000]))).toBe(false);
+    expect(isWakePresent(syntheticFFT([20000]))).toBe(false);
   });
 
   it('returns false on a noise floor (all bins at -100 dB)', () => {
@@ -236,8 +236,8 @@ describe('decodePayload', () => {
     const text = 'test message';
     const frame = assembleFrame(text);
     const payloadBits = huffmanEncode(text);
-    // Copy 2 starts after: DATA_START + payload1 + CRC1
-    const copy2Start = 130 + payloadBits.length + 16;
+    // APP_SIG×3(72) + SYNC(18) + UUID×2(64) + COPIES(8) + LENGTH(16) = DATA_START 178
+    const copy2Start = 178 + payloadBits.length + 16;
     for (let i = copy2Start; i < copy2Start + 16; i++) frame[i] ^= 1;
 
     const result = decodePayload(frame);
@@ -249,8 +249,8 @@ describe('decodePayload', () => {
     const text = 'test message';
     const frame = assembleFrame(text);
     const payloadBits = huffmanEncode(text);
-    // Corrupt copy 1 CRC (16 bits immediately after payload 1)
-    const crc1Start = 130 + payloadBits.length;
+    // DATA_START = 178 (APP_SIG×3=72 + SYNC=18 + UUID×2=64 + COPIES=8 + LENGTH=16)
+    const crc1Start = 178 + payloadBits.length;
     for (let i = crc1Start; i < crc1Start + 16; i++) frame[i] ^= 1;
 
     const result = decodePayload(frame);
