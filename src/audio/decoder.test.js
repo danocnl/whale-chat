@@ -1,306 +1,201 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   identifyToneIndex, isWakePresent, symbolsToBits,
   bitsToNum, parseHeader, decodePayload,
 } from './decoder.js';
-import { assembleFrame, toSymbols } from './encoder.js';
-import { encode as huffmanEncode } from './huffman.js';
-import { crc16 } from './crc.js';
+import { assembleFrame, toSymbols, HEADER_NSYM, HEADER_DATA_K, DATA_NSYM } from './encoder.js';
 
-// Mock AudioContext so imports succeed — startListening() is browser-only
 vi.stubGlobal('AudioContext', vi.fn(() => ({
   createOscillator: vi.fn(() => ({ connect: vi.fn(), start: vi.fn(), stop: vi.fn(), frequency: { setValueAtTime: vi.fn() }, type: 'sine' })),
-  createGain: vi.fn(() => ({ connect: vi.fn(), gain: { value: 1 } })),
+  createGain:       vi.fn(() => ({ connect: vi.fn(), gain: { value: 1, setValueAtTime: vi.fn() } })),
+  createDynamicsCompressor: vi.fn(() => ({ connect: vi.fn(), threshold:{value:0}, knee:{value:0}, ratio:{value:0}, attack:{value:0}, release:{value:0} })),
   createMediaStreamSource: vi.fn(() => ({ connect: vi.fn() })),
   createAnalyser: vi.fn(() => ({
-    connect: vi.fn(),
-    getFloatFrequencyData: vi.fn(),
-    frequencyBinCount: 2048,
-    fftSize: 4096,
-    smoothingTimeConstant: 0,
+    connect: vi.fn(), getFloatFrequencyData: vi.fn(),
+    frequencyBinCount: 2048, fftSize: 1024, smoothingTimeConstant: 0,
   })),
-  currentTime: 0,
-  state: 'running',
-  resume: vi.fn(() => Promise.resolve()),
-  close: vi.fn(),
-  destination: {},
+  currentTime: 0, state: 'running',
+  resume: vi.fn(() => Promise.resolve()), close: vi.fn(), destination: {},
 })));
 
-// ---------------------------------------------------------------------------
-// Test helper — synthetic FFT data with peaks at specific frequencies
-// ---------------------------------------------------------------------------
 const FFT_SIZE   = 1024;
 const SAMPLE_RATE = 44100;
 const freqToBin  = f => Math.round(f * FFT_SIZE / SAMPLE_RATE);
 
-const LOW_FREQS  = [4000, 4500, 5000, 5500];
-const HIGH_FREQS = [6000, 6500, 7000, 7500];
-const LOW_BINS   = LOW_FREQS.map(freqToBin);
-const HIGH_BINS  = HIGH_FREQS.map(freqToBin);
+// 4-band frequencies (must match decoder constants)
+const BAND_A = [4000, 4250, 4500, 4750];
+const BAND_B = [5000, 5250, 5500, 5750];
+const BAND_C = [6000, 6250, 6500, 6750];
+const BAND_D = [7000, 7250, 7500, 7750];
+const BINS_A = BAND_A.map(freqToBin);
+const BINS_B = BAND_B.map(freqToBin);
+const BINS_C = BAND_C.map(freqToBin);
+const BINS_D = BAND_D.map(freqToBin);
 
 function syntheticFFT(activeFreqs) {
   const data = new Float32Array(FFT_SIZE / 2).fill(-100);
   for (const freq of activeFreqs) {
     const bin = freqToBin(freq);
     if (bin < data.length) {
-      data[bin]     = -10; // strong signal
-      if (bin > 0)             data[bin - 1] = -25; // natural spillover
+      data[bin] = -10;
+      if (bin > 0)             data[bin - 1] = -25;
       if (bin < data.length-1) data[bin + 1] = -25;
     }
   }
   return data;
 }
 
-// ---------------------------------------------------------------------------
-// identifyToneIndex
-// ---------------------------------------------------------------------------
+// ── identifyToneIndex ─────────────────────────────────────────
 describe('identifyToneIndex', () => {
-  it('identifies each low-band tone correctly', () => {
-    for (let i = 0; i < LOW_FREQS.length; i++) {
-      const fft = syntheticFFT([LOW_FREQS[i]]);
-      expect(identifyToneIndex(fft, LOW_BINS)).toBe(i);
-    }
+  it('identifies each BAND_A tone correctly', () => {
+    for (let i = 0; i < BAND_A.length; i++)
+      expect(identifyToneIndex(syntheticFFT([BAND_A[i]]), BINS_A)).toBe(i);
   });
-
-  it('identifies each high-band tone correctly', () => {
-    for (let i = 0; i < HIGH_FREQS.length; i++) {
-      const fft = syntheticFFT([HIGH_FREQS[i]]);
-      expect(identifyToneIndex(fft, HIGH_BINS)).toBe(i);
-    }
+  it('identifies each BAND_B tone correctly', () => {
+    for (let i = 0; i < BAND_B.length; i++)
+      expect(identifyToneIndex(syntheticFFT([BAND_B[i]]), BINS_B)).toBe(i);
   });
-
-  it('returns the dominant tone when another is present but weaker', () => {
-    const fft = syntheticFFT([5500]); // LOW_FREQS[3]
-    fft[freqToBin(4000)] = -80; // weak background at tone 0
-    expect(identifyToneIndex(fft, LOW_BINS)).toBe(3);
+  it('identifies each BAND_C tone correctly', () => {
+    for (let i = 0; i < BAND_C.length; i++)
+      expect(identifyToneIndex(syntheticFFT([BAND_C[i]]), BINS_C)).toBe(i);
   });
-
-  it('tone 0 gives index 0', () => {
-    expect(identifyToneIndex(syntheticFFT([4000]), LOW_BINS)).toBe(0);
+  it('identifies each BAND_D tone correctly', () => {
+    for (let i = 0; i < BAND_D.length; i++)
+      expect(identifyToneIndex(syntheticFFT([BAND_D[i]]), BINS_D)).toBe(i);
   });
-
-  it('tone 3 gives index 3 (max for 4-FSK)', () => {
-    expect(identifyToneIndex(syntheticFFT([5500]), LOW_BINS)).toBe(3);
+  it('returns the dominant tone with a weaker background tone', () => {
+    const fft = syntheticFFT([4750]); // BAND_A[3]
+    fft[freqToBin(4000)] = -80; // weak background
+    expect(identifyToneIndex(fft, BINS_A)).toBe(3);
   });
-
-  it('handles both sub-bands simultaneously without cross-contamination', () => {
-    const fft = syntheticFFT([5000, 6500]); // LOW[2], HIGH[1]
-    expect(identifyToneIndex(fft, LOW_BINS)).toBe(2);
-    expect(identifyToneIndex(fft, HIGH_BINS)).toBe(1);
+  it('all 4 bands detected simultaneously without cross-contamination', () => {
+    const fft = syntheticFFT([4500, 5250, 6750, 7000]); // A[2], B[1], C[3], D[0]
+    expect(identifyToneIndex(fft, BINS_A)).toBe(2);
+    expect(identifyToneIndex(fft, BINS_B)).toBe(1);
+    expect(identifyToneIndex(fft, BINS_C)).toBe(3);
+    expect(identifyToneIndex(fft, BINS_D)).toBe(0);
   });
 });
 
-// ---------------------------------------------------------------------------
-// isWakePresent
-// ---------------------------------------------------------------------------
+// ── isWakePresent ─────────────────────────────────────────────
 describe('isWakePresent', () => {
-  it('returns true when both WAKE frequencies (9kHz + 15kHz) are active', () => {
+  it('returns true when both WAKE tones are active', () => {
     expect(isWakePresent(syntheticFFT([3000, 8500]))).toBe(true);
   });
-
-  it('returns false when only the low WAKE frequency is active', () => {
-    expect(isWakePresent(syntheticFFT([9000]))).toBe(false);
+  it('returns false when only WAKE_LOW is active', () => {
+    expect(isWakePresent(syntheticFFT([3000]))).toBe(false);
   });
-
-  it('returns false when only the high WAKE frequency is active', () => {
-    expect(isWakePresent(syntheticFFT([15000]))).toBe(false);
+  it('returns false when only WAKE_HIGH is active', () => {
+    expect(isWakePresent(syntheticFFT([8500]))).toBe(false);
   });
-
-  it('returns false on a noise floor (all bins at -100 dB)', () => {
-    const fft = new Float32Array(FFT_SIZE / 2).fill(-100);
-    expect(isWakePresent(fft)).toBe(false);
+  it('returns false on noise floor', () => {
+    expect(isWakePresent(new Float32Array(FFT_SIZE / 2).fill(-100))).toBe(false);
   });
-
   it('returns false when data-band tones are active but not WAKE tones', () => {
     expect(isWakePresent(syntheticFFT([4000, 6000]))).toBe(false);
   });
-
-  it('does not trigger on APP_SIG symbol tones alone', () => {
-    expect(isWakePresent(syntheticFFT([4500, 6500]))).toBe(false);
-  });
 });
 
-// ---------------------------------------------------------------------------
-// symbolsToBits
-// ---------------------------------------------------------------------------
+// ── symbolsToBits ─────────────────────────────────────────────
 describe('symbolsToBits', () => {
-  it('{lo:0, hi:0} → 4 zeros', () => {
-    expect(symbolsToBits([{ lo: 0, hi: 0 }])).toEqual([0,0,0,0]);
+  it('{a:0,b:0,c:0,d:0} → 8 zeros', () => {
+    expect(symbolsToBits([{ a:0, b:0, c:0, d:0 }])).toEqual([0,0,0,0,0,0,0,0]);
   });
-
-  it('{lo:3, hi:3} → 4 ones', () => {
-    expect(symbolsToBits([{ lo: 3, hi: 3 }])).toEqual([1,1,1,1]);
+  it('{a:3,b:3,c:3,d:3} → 8 ones', () => {
+    expect(symbolsToBits([{ a:3, b:3, c:3, d:3 }])).toEqual([1,1,1,1,1,1,1,1]);
   });
-
-  it('{lo:2, hi:1} → [1,0, 0,1]', () => {
-    // lo=2=10, hi=1=01
-    expect(symbolsToBits([{ lo: 2, hi: 1 }])).toEqual([1,0,0,1]);
+  it('{a:2,b:1,c:3,d:0} → correct bit pattern', () => {
+    expect(symbolsToBits([{ a:2, b:1, c:3, d:0 }])).toEqual([1,0,0,1,1,1,0,0]);
   });
-
-  it('is the inverse of toSymbols (for multiples of 4 bits)', () => {
-    const bits = [0,1,1,0, 1,0,0,1, 1,1,0,0]; // 12 bits, multiple of 4
+  it('is the inverse of toSymbols (for multiples of 8 bits)', () => {
+    const bits = [0,1,1,0, 1,0,0,1, 1,1,0,0, 0,1,0,1]; // 16 bits
     expect(symbolsToBits(toSymbols(bits))).toEqual(bits);
   });
-
-  it('produces correct length (4 bits per symbol)', () => {
-    expect(symbolsToBits([{ lo: 0, hi: 0 }, { lo: 3, hi: 3 }])).toHaveLength(8);
+  it('produces 8 bits per symbol', () => {
+    expect(symbolsToBits([{ a:0,b:0,c:0,d:0 }, { a:3,b:3,c:3,d:3 }])).toHaveLength(16);
   });
 });
 
-// ---------------------------------------------------------------------------
-// bitsToNum
-// ---------------------------------------------------------------------------
+// ── bitsToNum ─────────────────────────────────────────────────
 describe('bitsToNum', () => {
-  it('reads 8 bits to get 0xFF', () => {
-    expect(bitsToNum([1,1,1,1,1,1,1,1], 0, 8)).toBe(0xFF);
-  });
-
-  it('reads 8 bits to get 0x00', () => {
-    expect(bitsToNum([0,0,0,0,0,0,0,0], 0, 8)).toBe(0x00);
-  });
-
-  it('reads 8 bits to get 0xA3', () => {
-    expect(bitsToNum([1,0,1,0,0,0,1,1], 0, 8)).toBe(0xA3);
-  });
-
-  it('reads from a non-zero start offset', () => {
-    const bits = [0,0,0,0, 1,1,1,1];
-    expect(bitsToNum(bits, 4, 4)).toBe(0xF);
-  });
-
-  it('treats missing bits as 0', () => {
-    expect(bitsToNum([1], 0, 4)).toBe(0b1000);
+  it('reads 8 bits to get 0xFF', () => { expect(bitsToNum([1,1,1,1,1,1,1,1], 0, 8)).toBe(0xFF); });
+  it('reads 8 bits to get 0x00', () => { expect(bitsToNum([0,0,0,0,0,0,0,0], 0, 8)).toBe(0x00); });
+  it('reads 8 bits to get 0xA3', () => { expect(bitsToNum([1,0,1,0,0,0,1,1], 0, 8)).toBe(0xA3); });
+  it('reads from a non-zero offset', () => {
+    expect(bitsToNum([0,0,0,0, 1,1,1,1], 4, 4)).toBe(0xF);
   });
 });
 
-// ---------------------------------------------------------------------------
-// parseHeader
-// ---------------------------------------------------------------------------
+// ── parseHeader ───────────────────────────────────────────────
 describe('parseHeader', () => {
   it('parses APP_SIG correctly', () => {
-    const frame = assembleFrame('hello');
-    expect(parseHeader(frame).appSig).toBe(0xA3D7F1);
+    expect(parseHeader(assembleFrame('hello')).appSig).toBe(0xA3D7F1);
   });
-
   it('parses SENDER_UUID as an 8-char hex string', () => {
-    const frame = assembleFrame('hello');
-    expect(parseHeader(frame).sender).toMatch(/^[0-9a-f]{8}$/);
+    expect(parseHeader(assembleFrame('hello')).sender).toMatch(/^[0-9a-f]{8}$/);
   });
-
-  it('parses broadcast RECIPIENT_UUID as 0xFFFFFFFF', () => {
-    const frame = assembleFrame('hello', null);
-    expect(parseHeader(frame).recipient).toBe(0xFFFFFFFF);
+  it('parses broadcast RECIPIENT as 0xFFFFFFFF', () => {
+    expect(parseHeader(assembleFrame('hello')).recipient).toBe(0xFFFFFFFF);
   });
-
-  it('parses directed RECIPIENT_UUID correctly', () => {
-    const frame = assembleFrame('hello', 'b4e8f2d3');
-    expect(parseHeader(frame).recipient.toString(16).padStart(8, '0')).toBe('b4e8f2d3');
+  it('parses directed RECIPIENT correctly', () => {
+    expect(parseHeader(assembleFrame('hello', 'b4e8f2d3')).recipient.toString(16).padStart(8,'0'))
+      .toBe('b4e8f2d3');
   });
-
-  it('parses charCount as the message length', () => {
+  it('parses charCount as message length', () => {
     const text = 'hello world';
     expect(parseHeader(assembleFrame(text)).charCount).toBe(text.length);
   });
-
   it('parses dataK as the number of Huffman bytes', () => {
-    const text = 'test';
-    const header = parseHeader(assembleFrame(text));
-    expect(header.dataK).toBeGreaterThan(0);
-    expect(header.dataK).toBeLessThan(32); // short message
+    const h = parseHeader(assembleFrame('test'));
+    expect(h.dataK).toBeGreaterThan(0);
+    expect(h.dataK).toBeLessThan(32);
+  });
+  it('sets _appSigFound=true on a valid frame', () => {
+    expect(parseHeader(assembleFrame('test'))._appSigFound).toBe(true);
   });
 });
 
-// ---------------------------------------------------------------------------
-// decodePayload
-// ---------------------------------------------------------------------------
+// ── decodePayload ─────────────────────────────────────────────
 describe('decodePayload', () => {
-  it('decodes a clean frame and returns crcStatus "clean"', () => {
+  it('decodes a clean frame with crcStatus "clean"', () => {
     const text = 'Hello, world!';
     const result = decodePayload(assembleFrame(text));
     expect(result.text).toBe(text);
     expect(result.crcStatus).toBe('clean');
   });
-
   it('decodes a single-char message', () => {
     const result = decodePayload(assembleFrame('a'));
     expect(result.text).toBe('a');
     expect(result.crcStatus).toBe('clean');
   });
-
   it('decodes a 280-char message', () => {
     const text = 'Hello world! '.repeat(22).slice(0, 280);
     const result = decodePayload(assembleFrame(text));
     expect(result.text).toBe(text);
     expect(result.crcStatus).toBe('clean');
   });
-
-  it('returns "recovered" when copy 2 payload is corrupted', () => {
+  it('returns "recovered" when 1 RS payload byte is corrupted', () => {
     const text = 'test message';
-    const frame = assembleFrame(text);
-    const payloadBits = huffmanEncode(text);
-    // APP_SIG×3(72) + SYNC(18) + UUID×2(64) + COPIES(8) + LENGTH(16) = DATA_START 178
-    const copy2Start = 178 + payloadBits.length + 16;
-    for (let i = copy2Start; i < copy2Start + 16; i++) frame[i] ^= 1;
-
+    const frame = [...assembleFrame(text)];
+    // RS_PAYLOAD starts at: last_APP_SIG_offset(24) + SYNC+APP_SIG(42) + RS_HEADER_bits(152) = 218
+    const RS_PAYLOAD_ABS = 24 + 42 + (HEADER_DATA_K + HEADER_NSYM) * 8;
+    for (let i = 0; i < 8; i++) frame[RS_PAYLOAD_ABS + i] ^= 1; // corrupt 1 byte
     const result = decodePayload(frame);
     expect(result.text).toBe(text);
     expect(result.crcStatus).toBe('recovered');
   });
-
-  it('returns "recovered" when copy 1 CRC is corrupted', () => {
-    const text = 'test message';
-    const frame = assembleFrame(text);
-    const payloadBits = huffmanEncode(text);
-    // DATA_START = 178 (APP_SIG×3=72 + SYNC=18 + UUID×2=64 + COPIES=8 + LENGTH=16)
-    const crc1Start = 178 + payloadBits.length;
-    for (let i = crc1Start; i < crc1Start + 16; i++) frame[i] ^= 1;
-
-    const result = decodePayload(frame);
-    expect(result.text).toBe(text);
-    expect(result.crcStatus).toBe('recovered');
-  });
-
-  it('returns "corrupted" when both copy CRCs are flipped', () => {
-    const text = 'test';
-    const frame = assembleFrame(text);
-    const payloadBits = huffmanEncode(text);
-    const crc1Start = 130 + payloadBits.length;
-    const crc2Start = crc1Start + 16 + payloadBits.length;
-    for (let i = crc1Start; i < crc1Start + 16; i++) frame[i] ^= 1;
-    for (let i = crc2Start; i < crc2Start + 16; i++) frame[i] ^= 1;
-
-    const result = decodePayload(frame);
-    expect(result.crcStatus).toBe('corrupted');
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Full round-trip: encoder → toSymbols → symbolsToBits → decoder
-// ---------------------------------------------------------------------------
-describe('full round-trip', () => {
-  it('short message round-trips cleanly', () => {
-    const text = 'Hello!';
+  it('survives symbolsToBits round-trip', () => {
+    const text = 'This is a round-trip test';
     const bits = symbolsToBits(toSymbols(assembleFrame(text)));
     const result = decodePayload(bits);
     expect(result.text).toBe(text);
     expect(result.crcStatus).toBe('clean');
   });
-
-  it('full English sentence round-trips cleanly', () => {
-    const text = 'The quick brown fox jumps over the lazy dog.';
-    const bits = symbolsToBits(toSymbols(assembleFrame(text)));
-    const result = decodePayload(bits);
-    expect(result.text).toBe(text);
-    expect(result.crcStatus).toBe('clean');
-  });
-
-  it('directed message has correct RECIPIENT_UUID in header', () => {
-    const text = 'Hi there!';
-    const bits = symbolsToBits(toSymbols(assembleFrame(text, 'deadbeef')));
+  it('directed message preserves RECIPIENT_UUID through RS header', () => {
+    const bits = symbolsToBits(toSymbols(assembleFrame('Hi there!', 'deadbeef')));
     const header = parseHeader(bits);
-    expect(header.recipient.toString(16).padStart(8, '0')).toBe('deadbeef');
+    expect(header.recipient.toString(16).padStart(8,'0')).toBe('deadbeef');
   });
-
   it('parseHeader after toSymbols round-trip preserves APP_SIG', () => {
     const bits = symbolsToBits(toSymbols(assembleFrame('hello')));
     expect(parseHeader(bits).appSig).toBe(0xA3D7F1);

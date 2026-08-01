@@ -84,7 +84,7 @@ function renderGlobalHeader() {
   header.appendChild(brand);
   const ver = document.createElement('span');
   ver.className = 'release-version';
-  ver.textContent = 'v0.4';
+  ver.textContent = 'v0.5';
   header.appendChild(ver);
   return header;
 }
@@ -125,7 +125,7 @@ function renderNav() {
   // Brand — desktop sidebar only
   const brand = document.createElement('div');
   brand.className = 'nav-brand';
-  brand.innerHTML = `${navIconBat()}<span>Bat.Chat</span><span class="release-version">v0.4</span>`;
+  brand.innerHTML = `${navIconBat()}<span>Bat.Chat</span><span class="release-version">v0.5</span>`;
   nav.appendChild(brand);
 
   const tabs = [
