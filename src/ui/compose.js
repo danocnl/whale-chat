@@ -4,7 +4,7 @@ import { voiceSupported, showVoiceInput } from './voice-input.js';
 
 const MAX = 280;
 
-export function renderCompose(navigate) {
+export function renderCompose(navigate, params = null) {
   const el = document.createElement('div');
   el.className = 'screen';
 
@@ -196,6 +196,20 @@ export function renderCompose(navigate) {
       update();
     });
   });
+
+  // Pre-fill directed mode if navigated from contacts
+  if (params?.recipient) {
+    mode = 'directed';
+    recipient = params.recipient;
+    btnDirected.classList.add('active');
+    btnBroadcast.classList.remove('active');
+    recipientRow.style.display = 'block';
+    recipientInput.value = params.recipient;
+    const contacts = getContacts();
+    recipientHint.textContent = contacts[params.recipient]
+      ? `→ ${contacts[params.recipient]}`
+      : 'Unknown contact';
+  }
 
   update();
   return el;

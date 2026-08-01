@@ -17,13 +17,10 @@ async function toggleListening() {
     stopListening?.();
     stopListening = null;
     isListening   = false;
-    console.log('[listen] stopped');
   } else {
-    console.log('[listen] starting…');
     try {
       stopListening = await startListening(onIncoming);
       isListening   = true;
-      console.log('[listen] active — mic open, waiting for WAKE signal');
     } catch (err) {
       console.error('[listen] failed to start:', err.message);
       return;
@@ -41,43 +38,73 @@ function onIncoming({ senderUUID, isDirected, frameBits }) {
 
 // ── Router ───────────────────────────────────────────────────
 let currentScreen = 'history';
+let navParams     = null;
 
-export function navigate(screen) {
+export function navigate(screen, params = null) {
   currentScreen = screen;
+  navParams     = params;
   renderApp();
 }
 
 function renderApp() {
   app.innerHTML = '';
 
-  // Mobile-only header — branding + listen toggle at the top
+  // Mobile-only brand header
   app.appendChild(renderGlobalHeader());
 
-  const screenEl = currentScreen === 'history'   ? renderHistory(navigate)
-                 : currentScreen === 'compose'   ? renderCompose(navigate)
-                 : currentScreen === 'contacts'  ? renderContacts(navigate)
+  const screenEl = currentScreen === 'history'  ? renderHistory(navigate)
+                 : currentScreen === 'compose'  ? renderCompose(navigate, navParams)
+                 : currentScreen === 'contacts' ? renderContacts(navigate)
                  : renderProfile(navigate);
+
+  // Inject listen card at top of every screen body
+  const screenBody = screenEl.querySelector('.screen-body');
+  if (screenBody) screenBody.insertBefore(renderListenCard(), screenBody.firstChild);
+
   app.appendChild(screenEl);
   app.appendChild(renderNav());
+
+  // FAB — hide on compose (already on that screen)
+  if (currentScreen !== 'compose') app.appendChild(renderFAB());
 }
 
 // ── Global header (mobile only) ──────────────────────────────
 function renderGlobalHeader() {
   const header = document.createElement('div');
   header.className = 'global-header';
-
   const brand = document.createElement('div');
   brand.className = 'global-header-brand';
   brand.innerHTML = `${navIconBat()}<span>Bat.Chat</span>`;
   header.appendChild(brand);
-
-  const toggle = document.createElement('button');
-  toggle.className = `listen-mic-toggle${isListening ? ' on' : ''}`;
-  toggle.title = isListening ? 'Stop listening' : 'Start listening';
-  toggle.innerHTML = `<div class="listen-mic-thumb">${isListening ? navIconMic() : navIconMicOff()}</div>`;
-  toggle.addEventListener('click', toggleListening);
-  header.appendChild(toggle);
   return header;
+}
+
+// ── Listen card ───────────────────────────────────────────────
+function renderListenCard() {
+  const card = document.createElement('div');
+  card.className = `listen-card${isListening ? ' on' : ''}`;
+  card.innerHTML = `
+    <div class="listen-card-icon">${isListening ? navIconMic() : navIconMicOff()}</div>
+    <div class="listen-card-body">
+      <span class="listen-card-title">${isListening ? 'Listening for messages' : 'Not listening'}</span>
+      <span class="listen-card-hint">${isListening ? 'Ready to receive nearby messages' : 'Switch on to receive nearby messages'}</span>
+    </div>
+    <button class="listen-mic-toggle${isListening ? ' on' : ''}" title="${isListening ? 'Stop' : 'Start'} listening">
+      <div class="listen-mic-thumb">${isListening ? navIconMic() : navIconMicOff()}</div>
+    </button>
+  `;
+  card.querySelector('.listen-mic-toggle').addEventListener('click', toggleListening);
+  return card;
+}
+
+// ── FAB ───────────────────────────────────────────────────────
+function renderFAB() {
+  const btn = document.createElement('button');
+  btn.className = 'fab';
+  btn.title = 'Send a message';
+  btn.innerHTML = navIconSend();
+  btn.addEventListener('click', () => navigate('compose'));
+  return btn;
 }
 
 // ── Nav ──────────────────────────────────────────────────────
@@ -93,7 +120,6 @@ function renderNav() {
 
   const tabs = [
     { id: 'history',   label: 'Messages',  icon: navIconMessages(),  disabled: false },
-    { id: 'compose',   label: 'Send',      icon: navIconSend(),      disabled: false },
     { id: 'contacts',  label: 'Contacts',  icon: navIconContacts(),  disabled: false },
     { id: 'templates', label: 'Templates', icon: navIconTemplates(), disabled: true  },
     { id: 'profile',   label: 'Profile',   icon: navIconProfile(),   disabled: false },
@@ -107,23 +133,12 @@ function renderNav() {
     nav.appendChild(btn);
   }
 
-  // Listen toggle — desktop sidebar only (pinned to bottom)
-  const listenBtn = document.createElement('button');
-  listenBtn.className = `listen-toggle${isListening ? ' listening' : ''}`;
-  listenBtn.innerHTML = `
-    ${navIconMic()}
-    <span class="toggle-label">${isListening ? 'Listening' : 'Listen'}</span>
-    <div class="toggle-switch${isListening ? ' on' : ''}"></div>
-  `;
-  listenBtn.addEventListener('click', toggleListening);
-  nav.appendChild(listenBtn);
-
   return nav;
 }
 
 // ── SVG icons ────────────────────────────────────────────────
 function navIconSend() {
-  return `<svg viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`;
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`;
 }
 function navIconMessages() {
   return `<svg viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>`;
@@ -150,10 +165,10 @@ function navIconBat() {
   </svg>`;
 }
 function navIconMic() {
-  return `<svg viewBox="0 0 24 24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>`;
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>`;
 }
 function navIconMicOff() {
-  return `<svg viewBox="0 0 24 24"><line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12"/><path d="M15 9.34V4a3 3 0 0 0-5.94-.6"/><path d="M17 16.95A7 7 0 0 1 5 12v-2"/><path d="M19 12v2a7 7 0 0 1-.09 1.09"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>`;
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12"/><path d="M15 9.34V4a3 3 0 0 0-5.94-.6"/><path d="M17 16.95A7 7 0 0 1 5 12v-2"/><path d="M19 12v2a7 7 0 0 1-.09 1.09"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>`;
 }
 
 // ── Boot ─────────────────────────────────────────────────────

@@ -1,7 +1,7 @@
 import {
   getHistory, deleteFromHistory, resolveUUID, saveContact, getContacts,
 } from '../storage/store.js';
-import { showConfirm } from './confirm.js';
+import { showConfirm, showPromptModal } from './confirm.js';
 
 export function renderHistory(navigate) {
   const el = document.createElement('div');
@@ -100,10 +100,14 @@ export function renderHistory(navigate) {
       render();
     });
 
-    el.querySelector('#btn-add-contact')?.addEventListener('click', () => {
-      const nick = prompt(`Nickname for ${sender}:`);
-      if (nick?.trim()) {
-        saveContact(sender, nick.trim());
+    el.querySelector('#btn-add-contact')?.addEventListener('click', async () => {
+      const nick = await showPromptModal({
+        title: `Nickname for ${sender}`,
+        placeholder: 'Enter a nickname…',
+        confirmLabel: 'Save',
+      });
+      if (nick) {
+        saveContact(sender, nick);
         render();
       }
     });
