@@ -141,8 +141,8 @@ export function bitsToNum(bits, start, len) {
 }
 
 /**
- * Find the last occurrence of APP_SIG in the first ~96 bits of a frame buffer.
- * APP_SIG is transmitted 3× so the decoder can align even if early copies are missed.
+ * Find the last occurrence of APP_SIG in the first ~66 bits of a frame buffer.
+ * APP_SIG is transmitted 2× so the decoder can align even if the first copy is missed.
  * Returns the bit offset of the last match, or -1 if not found.
  * Exported for testing.
  *
@@ -158,7 +158,7 @@ function popcount(n) {
 export function findLastAppSig(bits) {
   let lastOffset = -1;
   let bestDist   = Infinity;
-  const limit    = Math.min(bits.length - 24, 90); // 3 copies × 24 bits + margin
+  const limit    = Math.min(bits.length - 24, 66); // 2 copies × 24 bits + margin
   for (let i = 0; i <= limit; i += 4) {  // step by 1 symbol (4 bits in 4-FSK)
     const dist = popcount(bitsToNum(bits, i, 24) ^ APP_SIG);
     // ≤ (not <) so we always prefer the LAST occurrence of the best match
@@ -220,28 +220,18 @@ export function decodePayload(rawFrameBits) {
   }
 
   const passingCopies = copies.filter(c => c.crcValid);
-  const majority = Math.ceil(copies.length / 2); // ≥2 of 3
 
   let result;
 
   if (passingCopies.length === copies.length) {
-    // All copies clean
-    result = { text: passingCopies[0].text, crcStatus: 'clean' };
-  } else if (passingCopies.length >= majority) {
-    // Majority pass — message is reliable, one copy had a bad moment
+    // Both copies clean
     result = { text: passingCopies[0].text, crcStatus: 'clean' };
   } else if (passingCopies.length > 0) {
-    // Minority pass
+    // One copy passed — recovered from the good copy
     result = { text: passingCopies[0].text, crcStatus: 'recovered' };
   } else {
-    // None pass — majority-bit vote on raw payload bits, attempt decode
-    const voted = majorityVote(copies.map(c => c.rawBits));
-    try {
-      const { text } = decodeWithLength(voted, charCount);
-      result = { text, crcStatus: 'corrupted' };
-    } catch {
-      result = { text: copies[0]?.text ?? '', crcStatus: 'corrupted' };
-    }
+    // Neither copy passed — attempt decode from first copy anyway
+    result = { text: copies[0]?.text ?? '', crcStatus: 'corrupted' };
   }
 
   console.log('[decoder] received (' + result.crcStatus + '):', JSON.stringify(result.text));

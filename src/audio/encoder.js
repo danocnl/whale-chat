@@ -43,13 +43,13 @@ const WAKE_HIGH = 8500; // 1000 Hz above high data band
 // Protocol fixed values
 const APP_SIG    = 0xA3D7F1;   // 24-bit app fingerprint — see SPEC.md
 const BROADCAST  = 0xFFFFFFFF; // RECIPIENT_UUID for broadcast mode
-const NUM_COPIES = 3;          // 3 copies enables true 2-of-3 majority vote
+const NUM_COPIES = 2;          // 2 copies: copy 1 fails → fall back to copy 2
 
 // Pre-computed constant bit sequences (computed once at module load)
-// APP_SIG is repeated 3× so the decoder can find it even if the first
-// 1-2 copies are missed due to WAKE signal decay timing.
-const APP_SIG_BITS    = toBits(APP_SIG, 24);
-const APP_SIG_REPEATED = [...APP_SIG_BITS, ...APP_SIG_BITS, ...APP_SIG_BITS]; // 72 bits
+// APP_SIG is repeated 2× so the decoder can align even if the first copy
+// is clipped by WAKE signal decay timing.
+const APP_SIG_BITS     = toBits(APP_SIG, 24);
+const APP_SIG_REPEATED = [...APP_SIG_BITS, ...APP_SIG_BITS]; // 48 bits
 const BROADCAST_BITS  = new Array(32).fill(1);
 const NUM_COPIES_BITS = toBits(NUM_COPIES, 8);
 
@@ -129,7 +129,7 @@ export async function transmit(text, recipientUUID = null) {
 export function estimateDuration(text) {
   const payloadBits = encodedBitLength(text);
   const totalDataBits =
-    APP_SIG_REPEATED.length  + // 72 (3 copies)
+    APP_SIG_REPEATED.length  + // 48 (2 copies)
     SYNC_BITS.length         + // 18
     32                       + // SENDER_UUID
     32                       + // RECIPIENT_UUID
