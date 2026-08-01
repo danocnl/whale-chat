@@ -202,8 +202,11 @@ describe('parseHeader', () => {
     expect(parseHeader(assembleFrame(text)).charCount).toBe(text.length);
   });
 
-  it('parses NUM_COPIES as 2', () => {
-    expect(parseHeader(assembleFrame('test')).numCopies).toBe(2);
+  it('parses dataK as the number of Huffman bytes', () => {
+    const text = 'test';
+    const header = parseHeader(assembleFrame(text));
+    expect(header.dataK).toBeGreaterThan(0);
+    expect(header.dataK).toBeLessThan(32); // short message
   });
 });
 

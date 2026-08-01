@@ -52,8 +52,14 @@ function renderApp() {
   // Mobile-only brand header
   app.appendChild(renderGlobalHeader());
 
+  const txHooks = {
+    onStart: () => { if (isListening) { stopListening?.(); } },
+    onEnd:   () => { if (isListening) { startListening(onIncoming).then(fn => { stopListening = fn; }); } },
+  };
+  const composeParams = { ...(navParams ?? {}), txHooks };
+
   const screenEl = currentScreen === 'history'  ? renderHistory(navigate)
-                 : currentScreen === 'compose'  ? renderCompose(navigate, navParams)
+                 : currentScreen === 'compose'  ? renderCompose(navigate, composeParams)
                  : currentScreen === 'contacts' ? renderContacts(navigate)
                  : renderProfile(navigate);
 
@@ -76,6 +82,10 @@ function renderGlobalHeader() {
   brand.className = 'global-header-brand';
   brand.innerHTML = `${navIconBat()}<span>Bat.Chat</span>`;
   header.appendChild(brand);
+  const ver = document.createElement('span');
+  ver.className = 'release-version';
+  ver.textContent = 'v0.4';
+  header.appendChild(ver);
   return header;
 }
 
@@ -115,7 +125,7 @@ function renderNav() {
   // Brand — desktop sidebar only
   const brand = document.createElement('div');
   brand.className = 'nav-brand';
-  brand.innerHTML = `${navIconBat()}<span>Bat.Chat</span>`;
+  brand.innerHTML = `${navIconBat()}<span>Bat.Chat</span><span class="release-version">v0.4</span>`;
   nav.appendChild(brand);
 
   const tabs = [

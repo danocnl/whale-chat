@@ -79,7 +79,7 @@
 - [ ] Test at range (across a room, ~3–5m)
 - [ ] Confirm AGC/NS/EC constraints are working correctly (spectrogram check)
 
-> **Notes:** Phone-to-phone bidirectional communication confirmed working. Final protocol configuration:
+> **Notes:** Phone-to-phone bidirectional communication confirmed working. Laptop self-reception (speaker→own mic) confirmed clean. Phone receiving laptop transmission showed corruption — diagnosed as room echoes (multipath) causing burst errors across consecutive symbols. Multiple copies do not help with burst errors since all copies are affected by the same echo. Fixed with Reed-Solomon FEC (see below). Final protocol configuration:
 > - **Modulation**: 4-FSK dual-band, 80ms symbols, 4 bits/symbol = ~50 bps effective
 > - **Frequency bands**: 4–8 kHz (was 10–20 kHz — phone speakers too weak above 9 kHz for cross-device pickup)
 > - **WAKE**: 3000 Hz / 8500 Hz (outside data bands, no FFT leakage)
@@ -89,6 +89,24 @@
 > - **APP_SIG**: 3× preamble repetition with fuzzy search (≤3 bit errors); decoder aligns to last occurrence
 > - **Key lesson**: errors are timing-driven (sampling phase vs symbol boundary), not purely random — longer symbols are the most impactful reliability improvement
 > - **FEC note**: Reed-Solomon error correction would be the correct long-term fix for pushing reliability above 95%; current 3-copy majority voting is a practical approximation
+
+---
+
+### Phase 3b — Reliability: Reed-Solomon FEC
+
+- [x] Replace 2-copy redundancy + CRC-16 with Reed-Solomon FEC (GF(256), nsym=8)
+- [x] Mute RX pipeline during TX (prevents self-reception on transmitting device)
+- [x] Remove NUM_COPIES header field, replace with DATA_K (Huffman byte count pre-parity)
+- [x] RS corrects up to 4 byte errors per frame in any positions — handles burst errors from room echoes
+
+> **Why RS over copies:** Multiple copies protect against random, uncorrelated bit errors. Room echoes
+> produce burst errors — a 200–500ms reflection corrupts a contiguous chunk of symbols, affecting all
+> copies equally. Reed-Solomon corrects any pattern of up to ⌊nsym/2⌋ byte errors regardless of
+> position. With nsym=8 and 80ms/symbol, RS handles echoes lasting up to ~640ms. Interleaving was
+> considered but is unnecessary for single-codeword frames — RS corrects scattered and burst errors
+> equally. Transmission time also improves: 1 copy + RS overhead < 2 copies for typical message lengths.
+> **Algorithm:** Berlekamp-Massey (error locator) + Chien search (error positions) + Vandermonde
+> Gaussian elimination (error magnitudes). Primitive polynomial: x^8+x^4+x^3+x^2+1 = 0x11D.
 
 ---
 

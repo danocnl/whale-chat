@@ -244,6 +244,15 @@ textarea:focus, input:focus { border-color: var(--accent); }
   background: var(--bg);
 }
 
+.release-version {
+  font-size: 10px;
+  color: var(--muted);
+  opacity: 0.5;
+  font-family: monospace;
+  letter-spacing: 0.05em;
+  margin-left: 4px;
+}
+
 .global-header-brand {
   display: flex;
   align-items: center;

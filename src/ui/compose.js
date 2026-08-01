@@ -166,7 +166,7 @@ export function renderCompose(navigate, params = null) {
     }, 100);
 
     try {
-      await transmit(text, mode === 'directed' ? recipient : null);
+      await transmit(text, mode === 'directed' ? recipient : null, params?.txHooks ?? {});
       progressBar.style.width = '100%';
       progressLabel.textContent = 'Sent!';
       await pause(700);

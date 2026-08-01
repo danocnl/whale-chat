@@ -11,7 +11,8 @@
  */
 
 import { decodeWithLength } from './huffman.js';
-import { verifyCRC } from './crc.js';
+import { rsDecode } from './rs.js';
+import { RS_NSYM } from './encoder.js';
 import { getShortUUID } from '../storage/store.js';
 
 // ---------------------------------------------------------------------------
@@ -55,8 +56,7 @@ const WAKE_MIN_TICKS = 5;  // 5 × 80ms = 400ms — WAKE is 500ms = 6.25 ticks a
 const MAX_FRAME_SYMBOLS = 1800;
 
 // Frame bit offsets — relative to the ALIGNED frame start (last APP_SIG copy).
-// After alignment, the structure is identical to the single-copy case:
-//   APP_SIG(24) → SYNC(18) → SENDER(32) → RECIPIENT(32) → COPIES(8) → LENGTH(16) → DATA
+//   APP_SIG(24) → SYNC(18) → SENDER(32) → RECIPIENT(32) → LENGTH(16) → DATA_K(8) → RS_PAYLOAD
 const OFF = {
   APP_SIG_START:   0,
   APP_SIG_END:     24,
@@ -66,11 +66,11 @@ const OFF = {
   SENDER_END:      74,
   RECIPIENT_START: 74,
   RECIPIENT_END:   106,
-  COPIES_START:    106,
-  COPIES_END:      114,
-  LENGTH_START:    114,
-  LENGTH_END:      130,
-  DATA_START:      130,  // relative to aligned (sliced) frame
+  LENGTH_START:    106,  // charCount (16 bits)
+  LENGTH_END:      122,
+  DATA_K_START:    122,  // number of Huffman bytes before RS parity (8 bits)
+  DATA_K_END:      130,
+  DATA_START:      130,  // start of RS codeword bits
 };
 
 // ---------------------------------------------------------------------------
@@ -179,7 +179,7 @@ export function findLastAppSig(bits) {
  * @returns {{ appSig, sender, recipient, numCopies, charCount, _offset }}
  */
 export function parseHeader(bits) {
-  const found  = findLastAppSig(bits); // -1 = not found within tolerance
+  const found  = findLastAppSig(bits);
   const offset = found >= 0 ? found : 0;
   const b      = offset > 0 ? bits.slice(offset) : bits;
 
@@ -187,10 +187,9 @@ export function parseHeader(bits) {
   const sender    = bitsToNum(b, OFF.SENDER_START, 32)
                       .toString(16).padStart(8, '0');
   const recipient = bitsToNum(b, OFF.RECIPIENT_START, 32);
-  const numCopies = bitsToNum(b, OFF.COPIES_START, 8);
   const charCount = bitsToNum(b, OFF.LENGTH_START, 16);
-  // _appSigFound: true if fuzzy search located APP_SIG (even with ≤3 bit errors)
-  return { appSig, sender, recipient, numCopies, charCount, _offset: offset, _appSigFound: found >= 0 };
+  const dataK     = bitsToNum(b, OFF.DATA_K_START, 8);
+  return { appSig, sender, recipient, charCount, dataK, _offset: offset, _appSigFound: found >= 0 };
 }
 
 /**
@@ -201,37 +200,40 @@ export function parseHeader(bits) {
  * @returns {{ text: string, crcStatus: 'clean'|'recovered'|'corrupted' }}
  */
 export function decodePayload(rawFrameBits) {
-  const { numCopies, charCount, _offset } = parseHeader(rawFrameBits);
+  const { charCount, dataK, _offset } = parseHeader(rawFrameBits);
   const frameBits = _offset > 0 ? rawFrameBits.slice(_offset) : rawFrameBits;
 
-  const copies = [];
-  let offset = OFF.DATA_START;
-
-  for (let i = 0; i < numCopies; i++) {
-    const { text, bitsConsumed } = decodeWithLength(
-      frameBits.slice(offset),
-      charCount,
-    );
-    const rawBits  = frameBits.slice(offset, offset + bitsConsumed);
-    const crcValue = bitsToNum(frameBits, offset + bitsConsumed, 16);
-    const crcValid = verifyCRC(rawBits, crcValue);
-    copies.push({ text, rawBits, crcValid });
-    offset += bitsConsumed + 16;
+  // Extract the RS codeword bytes from the bit stream
+  const totalBytes = dataK + RS_NSYM;
+  const cwBits     = frameBits.slice(OFF.DATA_START, OFF.DATA_START + totalBytes * 8);
+  const cwBytes    = new Uint8Array(totalBytes);
+  for (let i = 0; i < cwBits.length; i++) {
+    if (cwBits[i]) cwBytes[i >> 3] |= (1 << (7 - (i & 7)));
   }
 
-  const passingCopies = copies.filter(c => c.crcValid);
-
   let result;
-
-  if (passingCopies.length === copies.length) {
-    // Both copies clean
-    result = { text: passingCopies[0].text, crcStatus: 'clean' };
-  } else if (passingCopies.length > 0) {
-    // One copy passed — recovered from the good copy
-    result = { text: passingCopies[0].text, crcStatus: 'recovered' };
-  } else {
-    // Neither copy passed — attempt decode from first copy anyway
-    result = { text: copies[0]?.text ?? '', crcStatus: 'corrupted' };
+  try {
+    const { data, errors } = rsDecode(cwBytes, RS_NSYM);
+    // Unpack data bytes back to bits
+    const dataBits = [];
+    for (const byte of data) {
+      for (let b = 7; b >= 0; b--) dataBits.push((byte >> b) & 1);
+    }
+    const { text } = decodeWithLength(dataBits, charCount);
+    result = { text, crcStatus: errors === 0 ? 'clean' : 'recovered' };
+  } catch {
+    // RS could not correct — too many errors. Attempt raw Huffman decode.
+    const dataBits = [];
+    for (let i = 0; i < dataK; i++) {
+      const byte = cwBytes[i];
+      for (let b = 7; b >= 0; b--) dataBits.push((byte >> b) & 1);
+    }
+    try {
+      const { text } = decodeWithLength(dataBits, charCount);
+      result = { text, crcStatus: 'corrupted' };
+    } catch {
+      result = { text: '', crcStatus: 'corrupted' };
+    }
   }
 
   console.log('[decoder] received (' + result.crcStatus + '):', JSON.stringify(result.text));
@@ -241,17 +243,6 @@ export function decodePayload(rawFrameBits) {
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
-
-function majorityVote(bitArrays) {
-  const len = Math.max(...bitArrays.map(a => a.length));
-  const half = bitArrays.length / 2;
-  const result = [];
-  for (let i = 0; i < len; i++) {
-    const ones = bitArrays.reduce((sum, a) => sum + (a[i] ?? 0), 0);
-    result.push(ones >= half ? 1 : 0);
-  }
-  return result;
-}
 
 // ---------------------------------------------------------------------------
 // Browser-only — getUserMedia + AnalyserNode + state machine
@@ -416,7 +407,7 @@ export async function startListening(onIncoming) {
       dist === 0 ? '✓' : `(${dist} bit errors)`,
       'alignOffset:', header._offset,
       'sender:', header.sender, 'recipient:', recipientHex,
-      'charCount:', header.charCount);
+      'charCount:', header.charCount, 'dataK:', header.dataK);
 
     if (!header._appSigFound) {
       console.log('[decoder] APP_SIG not found in preamble (too many bit errors)');
@@ -425,9 +416,13 @@ export async function startListening(onIncoming) {
     // Note: header.appSig may differ slightly from APP_SIG (≤3 bit errors tolerated) —
     // use _appSigFound not exact equality
 
-    // charCount sanity check — bit errors can produce wildly wrong values
+    // Sanity checks — bit errors can produce wildly wrong values
     if (header.charCount === 0 || header.charCount > 280) {
       console.log('[decoder] charCount out of range:', header.charCount, '— discarding');
+      return;
+    }
+    if (header.dataK === 0 || header.dataK > 240) {
+      console.log('[decoder] dataK out of range:', header.dataK, '— discarding');
       return;
     }
 

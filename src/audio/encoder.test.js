@@ -95,17 +95,13 @@ describe('assembleFrame', () => {
     expect(long.length).toBeGreaterThan(short.length);
   });
 
-  it('payload bits appear twice (NUM_COPIES = 2)', () => {
+  it('frame contains RS codeword (longer than raw huffman bits)', () => {
     const text = 'test';
-    const payloadBits = huffmanEncode(text);
     const frame = assembleFrame(text);
-    const frameStr = frame.join('');
-    const payloadStr = payloadBits.join('');
-    // The payload should appear at least twice in the frame
-    const firstIdx  = frameStr.indexOf(payloadStr);
-    const secondIdx = frameStr.indexOf(payloadStr, firstIdx + payloadStr.length);
-    expect(firstIdx).toBeGreaterThanOrEqual(0);
-    expect(secondIdx).toBeGreaterThan(firstIdx);
+    // Frame should be longer than just header + raw huffman bits
+    const huffBits = huffmanEncode(text);
+    const minExpected = 48 + 18 + 32 + 32 + 16 + 8 + huffBits.length;
+    expect(frame.length).toBeGreaterThan(minExpected);
   });
 
   it('broadcast frame has 32 bits of 1s for RECIPIENT_UUID', () => {

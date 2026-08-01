@@ -6,12 +6,15 @@
  * symbol timing that never drifts.
  *
  * Frame structure (see docs/SPEC.md):
- *   WAKE → APP_SIG → SYNC → SENDER_UUID → RECIPIENT_UUID →
- *   NUM_COPIES → LENGTH → PAYLOAD_1 → CRC16_1 → PAYLOAD_2 → CRC16_2 → END
+ *   WAKE → APP_SIG×2 → SYNC → SENDER_UUID → RECIPIENT_UUID →
+ *   LENGTH(16) → DATA_K(8) → RS_PAYLOAD → END
+ *
+ * RS_PAYLOAD = rsEncode(pack(huffman(text)), RS_NSYM)
+ * DATA_K = number of Huffman bytes before RS parity
  */
 
 import { encode as huffmanEncode, encodedBitLength } from './huffman.js';
-import { crc16 } from './crc.js';
+import { rsEncode } from './rs.js';
 import { getShortUUID } from '../storage/store.js';
 
 // ---------------------------------------------------------------------------
@@ -19,43 +22,29 @@ import { getShortUUID } from '../storage/store.js';
 // ---------------------------------------------------------------------------
 
 const SAMPLE_RATE       = 44100;
-const SYMBOL_S          = 0.080; // 80ms per symbol — 1024 FFT window (23ms) covers only 29%
-                                  // of one symbol, giving much cleaner tone identification
-const WAKE_S            = 0.500; // 500ms sustained tones
-const END_S             = 0.300; // 300ms sustained tones
-const SCHEDULE_OFFSET_S = 0.050; // 50ms ahead of current time for scheduling
+const SYMBOL_S          = 0.080;
+const WAKE_S            = 0.500;
+const END_S             = 0.300;
+const SCHEDULE_OFFSET_S = 0.050;
 
-// 4 tones per sub-band, 500 Hz spacing — doubles bin separation vs 8-FSK,
-// making tone identification far more reliable in noisy conditions.
-// Cost: 2 bits/symbol per band (was 3) → ~170 bps effective (was ~255 bps)
-// Shifted to 10-14 kHz where speakers produce 10-15 dB more power than 16-20 kHz
-// 4-8 kHz — within reliable output range of ALL device speakers including phones
 const LOW_FREQS  = [4000, 4500, 5000, 5500];
 const HIGH_FREQS = [6000, 6500, 7000, 7500];
+const WAKE_LOW   = 3000;
+const WAKE_HIGH  = 8500;
 
-// WAKE frequencies sit OUTSIDE the 8-FSK data bands entirely.
-// This eliminates both data-symbol collisions AND FFT sidelobe leakage
-// from adjacent data tones, preventing false WAKE/END triggers.
-// Low data band: 16000-17750 Hz  |  High data band: 18000-19750 Hz
-const WAKE_LOW  = 3000; // 1000 Hz below low data band
-const WAKE_HIGH = 8500; // 1000 Hz above high data band
+const APP_SIG    = 0xA3D7F1;
+const BROADCAST  = 0xFFFFFFFF;
 
-// Protocol fixed values
-const APP_SIG    = 0xA3D7F1;   // 24-bit app fingerprint — see SPEC.md
-const BROADCAST  = 0xFFFFFFFF; // RECIPIENT_UUID for broadcast mode
-const NUM_COPIES = 2;          // 2 copies: copy 1 fails → fall back to copy 2
+// Reed-Solomon parity symbols — corrects up to RS_NSYM/2 byte errors.
+// With RS_NSYM=8: corrects up to 4 corrupted bytes per frame.
+// Room echoes at 80ms/symbol typically corrupt 1-3 symbols = 1-2 bytes —
+// well within correction capability. No copies needed.
+export const RS_NSYM = 8;
 
-// Pre-computed constant bit sequences (computed once at module load)
-// APP_SIG is repeated 2× so the decoder can align even if the first copy
-// is clipped by WAKE signal decay timing.
 const APP_SIG_BITS     = toBits(APP_SIG, 24);
 const APP_SIG_REPEATED = [...APP_SIG_BITS, ...APP_SIG_BITS]; // 48 bits
-const BROADCAST_BITS  = new Array(32).fill(1);
-const NUM_COPIES_BITS = toBits(NUM_COPIES, 8);
-
-// SYNC: alternating 010101... gives guaranteed transitions in both sub-bands,
-// helping the receiver lock onto symbol boundaries before data arrives.
-const SYNC_BITS = [0,1,0,1,0,1, 0,1,0,1,0,1, 0,1,0,1,0,1]; // 18 bits = 3 symbols
+const BROADCAST_BITS   = new Array(32).fill(1);
+const SYNC_BITS        = [0,1,0,1,0,1, 0,1,0,1,0,1, 0,1,0,1,0,1]; // 18 bits
 
 // ---------------------------------------------------------------------------
 // Validation
@@ -64,15 +53,10 @@ const SYNC_BITS = [0,1,0,1,0,1, 0,1,0,1,0,1, 0,1,0,1,0,1]; // 18 bits = 3 symbol
 const ALLOWED_RE = /^[A-Za-z0-9 .,!?'"()\-:;/@#_\n]+$/;
 const MAX_CHARS  = 280;
 
-/**
- * Validate message text before transmission.
- * @param {string} text
- * @returns {{ valid: boolean, error?: string }}
- */
 export function validateMessage(text) {
-  if (!text.length)              return { valid: false, error: 'Message cannot be empty' };
-  if (text.length > MAX_CHARS)   return { valid: false, error: `Max ${MAX_CHARS} characters` };
-  if (!ALLOWED_RE.test(text))    return { valid: false, error: 'Only English characters and basic punctuation allowed' };
+  if (!text.length)            return { valid: false, error: 'Message cannot be empty' };
+  if (text.length > MAX_CHARS) return { valid: false, error: `Max ${MAX_CHARS} characters` };
+  if (!ALLOWED_RE.test(text))  return { valid: false, error: 'Only English characters and basic punctuation allowed' };
   return { valid: true };
 }
 
@@ -97,50 +81,47 @@ function getCtx() {
 /**
  * Transmit a message over the device speaker.
  *
- * Must be called from a user-gesture handler (tap/click) to satisfy
- * browser AudioContext autoplay policy on iOS Safari and Android Chrome.
- *
- * @param {string} text - Message to send (validated internally)
- * @param {string|null} recipientUUID - 8-char hex short UUID, or null for broadcast
- * @returns {Promise<void>} Resolves when transmission is complete
+ * @param {string}      text          - Message to send
+ * @param {string|null} recipientUUID - 8-char hex UUID or null for broadcast
+ * @param {object}      hooks         - Optional { onStart, onEnd } callbacks for
+ *                                      muting the RX pipeline during TX
+ * @returns {Promise<void>}
  */
-export async function transmit(text, recipientUUID = null) {
+export async function transmit(text, recipientUUID = null, hooks = {}) {
   const { valid, error } = validateMessage(text);
   if (!valid) throw new Error(error);
-  if (isTransmitting) throw new Error('Already transmitting — wait for current message to finish');
+  if (isTransmitting) throw new Error('Already transmitting');
 
   isTransmitting = true;
+  hooks.onStart?.();
   console.log('[encoder] sending:', JSON.stringify(text));
   try {
     const dataBits = assembleFrame(text, recipientUUID);
     await playFrame(dataBits);
   } finally {
     isTransmitting = false;
+    hooks.onEnd?.();
   }
 }
 
 /**
  * Estimate total transmission duration in milliseconds.
- * Use this to show a progress bar or countdown in the UI before sending.
- *
- * @param {string} text
- * @returns {number} Duration in ms
  */
 export function estimateDuration(text) {
-  const payloadBits = encodedBitLength(text);
-  const totalDataBits =
-    APP_SIG_REPEATED.length  + // 48 (2 copies)
+  const huffBits  = encodedBitLength(text);
+  const k         = Math.ceil(huffBits / 8);         // data bytes
+  const rsBits    = (k + RS_NSYM) * 8;               // RS codeword in bits
+  const totalBits =
+    APP_SIG_REPEATED.length + // 48
     SYNC_BITS.length         + // 18
     32                       + // SENDER_UUID
     32                       + // RECIPIENT_UUID
-    NUM_COPIES_BITS.length   + // 8
-    16                       + // LENGTH
-    (payloadBits + 16) * NUM_COPIES; // (payload + CRC-16) × 2
+    16                       + // LENGTH (charCount)
+    8                        + // DATA_K
+    rsBits;
 
-  const symbolCount = Math.ceil(totalDataBits / 4); // 4-FSK: 4 bits per symbol
-  const dataMs      = symbolCount * (SYMBOL_S * 1000);
-  const overheadMs  = (WAKE_S + END_S) * 1000;
-  return Math.ceil(dataMs + overheadMs);
+  const symbolCount = Math.ceil(totalBits / 4);
+  return Math.ceil(symbolCount * SYMBOL_S * 1000 + (WAKE_S + END_S) * 1000);
 }
 
 // ---------------------------------------------------------------------------
@@ -148,28 +129,42 @@ export function estimateDuration(text) {
 // ---------------------------------------------------------------------------
 
 /**
- * Build the complete data bit stream for the frame.
- * WAKE and END tones are handled separately in playFrame().
+ * Build the complete data bit stream.
  * Exported for testing.
  */
 export function assembleFrame(text, recipientUUID = null) {
-  const payloadBits   = huffmanEncode(text);
-  const crcBits       = toBits(crc16(payloadBits), 16);
+  // Huffman encode → bits → pack to bytes
+  const huffBits    = huffmanEncode(text);
+  const k           = Math.ceil(huffBits.length / 8);
+  const dataBytes   = new Uint8Array(k);
+  for (let i = 0; i < huffBits.length; i++) {
+    if (huffBits[i]) dataBytes[i >> 3] |= (1 << (7 - (i & 7)));
+  }
+
+  // RS encode
+  const rsBytes = rsEncode(dataBytes, RS_NSYM);
+
+  // Unpack RS codeword back to bits
+  const rsBits = [];
+  for (const byte of rsBytes) {
+    for (let b = 7; b >= 0; b--) rsBits.push((byte >> b) & 1);
+  }
+
   const senderBits    = toBits(parseInt(getShortUUID(), 16), 32);
   const recipientBits = recipientUUID
     ? toBits(parseInt(recipientUUID, 16), 32)
     : BROADCAST_BITS;
   const lengthBits    = toBits(text.length, 16);
+  const dataKBits     = toBits(k, 8);
 
   return [
     ...APP_SIG_REPEATED,
     ...SYNC_BITS,
     ...senderBits,
     ...recipientBits,
-    ...NUM_COPIES_BITS,
     ...lengthBits,
-    ...payloadBits, ...crcBits,  // copy 1
-    ...payloadBits, ...crcBits,  // copy 2
+    ...dataKBits,
+    ...rsBits,
   ];
 }
 
@@ -179,10 +174,8 @@ export function assembleFrame(text, recipientUUID = null) {
 
 async function playFrame(dataBits) {
   const ctx = getCtx();
-  await ctx.resume(); // required after user gesture on iOS/Android
+  await ctx.resume();
 
-  // Signal chain: osc → gain → compressor → masterGain → speakers
-  // Compressor boosts average level without clipping peaks
   const compressor = ctx.createDynamicsCompressor();
   compressor.threshold.value = -18;
   compressor.knee.value      = 6;
@@ -197,43 +190,34 @@ async function playFrame(dataBits) {
 
   const osc1 = ctx.createOscillator();
   const osc2 = ctx.createOscillator();
-  osc1.type = 'sine';
-  osc2.type = 'sine';
+  osc1.type  = 'sine';
+  osc2.type  = 'sine';
 
   const g1 = ctx.createGain(); g1.gain.value = 0.5;
   const g2 = ctx.createGain(); g2.gain.value = 0.5;
-
   osc1.connect(g1); g1.connect(master);
   osc2.connect(g2); g2.connect(master);
 
-  // Schedule all frequency changes against the audio clock
   let t = ctx.currentTime + SCHEDULE_OFFSET_S;
   const startTime = t;
 
-  // WAKE — sustained tones at sub-band centres
   osc1.frequency.setValueAtTime(WAKE_LOW,  t);
   osc2.frequency.setValueAtTime(WAKE_HIGH, t);
   t += WAKE_S;
 
-  // Data symbols
-  const symbols = toSymbols(dataBits);
-  for (const { lo, hi } of symbols) {
+  for (const { lo, hi } of toSymbols(dataBits)) {
     osc1.frequency.setValueAtTime(LOW_FREQS[lo],  t);
     osc2.frequency.setValueAtTime(HIGH_FREQS[hi], t);
     t += SYMBOL_S;
   }
 
-  // END — sustained tones at sub-band centres (shorter than WAKE)
   osc1.frequency.setValueAtTime(WAKE_LOW,  t);
   osc2.frequency.setValueAtTime(WAKE_HIGH, t);
   t += END_S;
 
-  osc1.start(startTime);
-  osc2.start(startTime);
-  osc1.stop(t);
-  osc2.stop(t);
+  osc1.start(startTime); osc2.start(startTime);
+  osc1.stop(t);          osc2.stop(t);
 
-  // Resolve ~100ms after transmission completes
   const durationMs = (t - ctx.currentTime) * 1000;
   return new Promise(resolve => setTimeout(resolve, durationMs + 100));
 }
@@ -242,28 +226,18 @@ async function playFrame(dataBits) {
 // Bit utilities
 // ---------------------------------------------------------------------------
 
-/** Convert an integer to an array of bits (MSB first). */
 function toBits(n, width) {
   const bits = [];
   for (let i = width - 1; i >= 0; i--) bits.push((n >>> i) & 1);
   return bits;
 }
 
-/**
- * Convert a flat bit array into dual-band symbol pairs.
- * 4-FSK: every 4 bits → one symbol: first 2 bits = low band index, next 2 = high band index.
- * Pads with zeros to the nearest multiple of 4.
- * Exported for testing.
- */
 export function toSymbols(bits) {
   const padded = [...bits];
   while (padded.length % 4 !== 0) padded.push(0);
-
   const symbols = [];
   for (let i = 0; i < padded.length; i += 4) {
-    const lo = (padded[i]   << 1) | padded[i+1];
-    const hi = (padded[i+2] << 1) | padded[i+3];
-    symbols.push({ lo, hi });
+    symbols.push({ lo: (padded[i] << 1) | padded[i+1], hi: (padded[i+2] << 1) | padded[i+3] });
   }
   return symbols;
 }
